@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gridgain-payments-demo
+
+demo:
+  gridgain:
+    persistence-enabled: false
+  seed:
+    accounts: 100000
+    merchants: 10000
+  simulator:
+    default-rate-per-second: 120
+    target-decline-rate: 0.05
+  fraud:
+    threshold: 72.0

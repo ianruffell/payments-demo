@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GridGain Payments Demo</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="shell">
+    <section class="hero">
+        <div>
+            <p class="eyebrow">GridGain Payments Demo</p>
+            <h1>Real-time card transactions on GridGain</h1>
+            <p class="lede">
+                Authorize, capture, and refund flows backed by GridGain caches, live SQL metrics, and a browser dashboard.
+            </p>
+        </div>
+        <div class="hero-badge">
+            <span>Embedded GridGain</span>
+            <strong>Java + REST + Live Dashboard</strong>
+        </div>
+    </section>
+
+    <section class="controls-grid">
+        <article class="panel">
+            <h2>Simulator</h2>
+            <label for="ratePerSecond">Rate per second</label>
+            <input id="ratePerSecond" type="number" min="1" value="120">
+            <div class="button-row">
+                <button id="startSimulator">Start</button>
+                <button id="stopSimulator" class="secondary">Stop</button>
+            </div>
+            <p id="simulatorStatus" class="muted">Loading simulator state...</p>
+        </article>
+
+        <article class="panel">
+            <h2>Fraud Rule</h2>
+            <label for="fraudThreshold">Fraud threshold</label>
+            <input id="fraudThreshold" type="range" min="40" max="95" step="1" value="72">
+            <div class="range-readout">
+                <span id="fraudThresholdValue">72</span>
+                <button id="applyFraudThreshold">Apply</button>
+            </div>
+            <p class="muted">Lower values cause more declines immediately.</p>
+        </article>
+
+        <article class="panel">
+            <h2>Merchant Outage</h2>
+            <label for="merchantId">Merchant ID</label>
+            <input id="merchantId" type="text" value="MER-00001">
+            <div class="button-row">
+                <button id="deactivateMerchant" class="warning">Deactivate</button>
+                <button id="activateMerchant" class="secondary">Reactivate</button>
+            </div>
+            <p id="merchantStatus" class="muted">Use a top merchant ID to show immediate impact.</p>
+        </article>
+    </section>
+
+    <section class="stats-grid">
+        <article class="stat-card">
+            <span>Throughput / 1m</span>
+            <strong id="throughputLastMinute">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Approval Rate / 5m</span>
+            <strong id="approvalRate">0%</strong>
+        </article>
+        <article class="stat-card">
+            <span>Generated Payments</span>
+            <strong id="generatedPayments">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Current Threshold</span>
+            <strong id="activeThreshold">72</strong>
+        </article>
+    </section>
+
+    <section class="visual-grid">
+        <article class="panel wide">
+            <div class="section-header">
+                <h2>Throughput Trend</h2>
+                <span class="muted">last 60 seconds</span>
+            </div>
+            <div id="throughputChart" class="bars"></div>
+        </article>
+
+        <article class="panel">
+            <div class="section-header">
+                <h2>Status Mix</h2>
+                <span class="muted">5 minute window</span>
+            </div>
+            <div id="statusMix" class="status-mix"></div>
+        </article>
+    </section>
+
+    <section class="tables-grid">
+        <article class="panel">
+            <h2>Declines By Reason</h2>
+            <table>
+                <thead>
+                <tr>
+                    <th>Reason</th>
+                    <th>Count</th>
+                </tr>
+                </thead>
+                <tbody id="declinesTable"></tbody>
+            </table>
+        </article>
+
+        <article class="panel">
+            <h2>Top Merchants</h2>
+            <table>
+                <thead>
+                <tr>
+                    <th>Merchant</th>
+                    <th>Txn</th>
+                    <th>Amount</th>
+                </tr>
+                </thead>
+                <tbody id="topMerchantsTable"></tbody>
+            </table>
+        </article>
+    </section>
+
+    <section class="panel">
+        <h2>Recent Suspicious Payments</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>Payment</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Fraud Score</th>
+                <th>Status</th>
+                <th>Time</th>
+            </tr>
+            </thead>
+            <tbody id="suspiciousTable"></tbody>
+        </table>
+    </section>
+
+    <section class="panel">
+        <div class="section-header">
+            <h2>Demo SQL</h2>
+            <span class="muted">Run these in the embedded GridGain SQL shell or from the API code</span>
+        </div>
+        <pre>SELECT declineReason, COUNT(*)
+FROM Payment
+WHERE createdAtEpochMs &gt;= ?
+  AND status = 'DECLINED'
+GROUP BY declineReason
+ORDER BY COUNT(*) DESC;
+
+SELECT merchantId, COUNT(*), SUM(amountMinor)
+FROM Payment
+WHERE createdAtEpochMs &gt;= ?
+GROUP BY merchantId
+ORDER BY COUNT(*) DESC
+LIMIT 5;</pre>
+    </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
