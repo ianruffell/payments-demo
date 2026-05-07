@@ -2,12 +2,14 @@ package com.example.paymentsdemo.api;
 
 import com.example.paymentsdemo.dto.DashboardSnapshot;
 import com.example.paymentsdemo.service.DashboardService;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/dashboard")
+@Profile("!merchant-simulator")
 public class DashboardController {
 
     private final DashboardService dashboardService;

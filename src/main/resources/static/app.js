@@ -62,8 +62,10 @@ function renderStatusMix(statusCounts) {
   const root = document.getElementById("statusMix");
   root.innerHTML = "";
 
-  const orderedStatuses = ["AUTHORIZED", "CAPTURED", "REFUNDED", "DECLINED"];
-  for (const status of orderedStatuses) {
+  const orderedStatuses = ["PENDING_MERCHANT", "AUTHORIZED", "CAPTURED", "REFUNDED", "DECLINED", "TIMED_OUT"];
+  const remainingStatuses = Object.keys(statusCounts).filter((status) => !orderedStatuses.includes(status)).sort();
+  const statuses = [...orderedStatuses, ...remainingStatuses];
+  for (const status of statuses) {
     const value = statusCounts[status] || 0;
     const pill = document.createElement("div");
     pill.className = "status-pill";

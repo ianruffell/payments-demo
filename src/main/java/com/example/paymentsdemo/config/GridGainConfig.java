@@ -1,47 +1,44 @@
 package com.example.paymentsdemo.config;
 
-import com.example.paymentsdemo.domain.Account;
-import com.example.paymentsdemo.domain.LedgerEntry;
-import com.example.paymentsdemo.domain.Merchant;
-import com.example.paymentsdemo.domain.Payment;
-import com.example.paymentsdemo.service.CacheNames;
 import jakarta.annotation.PreDestroy;
+import java.util.List;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.Ignition;
-import org.apache.ignite.cache.CacheAtomicityMode;
-import org.apache.ignite.cache.CacheMode;
-import org.apache.ignite.cluster.ClusterState;
-import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.DataRegionConfiguration;
-import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.gridgain.grid.configuration.GridGainConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 @Configuration
+@Profile("!merchant-simulator")
 public class GridGainConfig {
 
     private Ignite ignite;
 
     @Bean
-    public Ignite ignite(@Value("${demo.gridgain.persistence-enabled:false}") boolean persistenceEnabled) {
+    public Ignite ignite(
+            @Value("${demo.gridgain.instance-name:payments-demo-client}") String instanceName,
+            @Value("${demo.gridgain.discovery-addresses}") List<String> discoveryAddresses,
+            @Value("${demo.gridgain.license-url:}") String licenseUrl
+    ) {
         IgniteConfiguration cfg = new IgniteConfiguration();
-        cfg.setIgniteInstanceName("payments-demo-node");
-        cfg.setPeerClassLoadingEnabled(true);
-        cfg.setDiscoverySpi(discoverySpi());
-        cfg.setDataStorageConfiguration(dataStorageConfiguration(persistenceEnabled));
-        cfg.setCacheConfiguration(
-                cacheConfiguration(CacheNames.ACCOUNTS, String.class, Account.class),
-                cacheConfiguration(CacheNames.MERCHANTS, String.class, Merchant.class),
-                cacheConfiguration(CacheNames.PAYMENTS, String.class, Payment.class),
-                cacheConfiguration(CacheNames.LEDGER_ENTRIES, String.class, LedgerEntry.class)
-        );
+        cfg.setIgniteInstanceName(instanceName);
+        cfg.setClientMode(true);
+        cfg.setDiscoverySpi(discoverySpi(discoveryAddresses));
+        if (licenseUrl != null && !licenseUrl.isBlank()) {
+            GridGainConfiguration ggCfg = new GridGainConfiguration();
+            ggCfg.setLicenseUrl(licenseUrl);
+            cfg.setPluginConfigurations(ggCfg);
+        }
 
         ignite = Ignition.start(cfg);
-        ignite.cluster().state(ClusterState.ACTIVE);
+        for (var cacheConfiguration : CacheConfigurations.all()) {
+            ignite.getOrCreateCache(cacheConfiguration);
+        }
         return ignite;
     }
 
@@ -52,41 +49,12 @@ public class GridGainConfig {
         }
     }
 
-    private TcpDiscoverySpi discoverySpi() {
+    private TcpDiscoverySpi discoverySpi(List<String> discoveryAddresses) {
         TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryVmIpFinder();
-        ipFinder.setAddresses(java.util.List.of("127.0.0.1:47500..47509"));
+        ipFinder.setAddresses(discoveryAddresses);
 
         TcpDiscoverySpi discoverySpi = new TcpDiscoverySpi();
         discoverySpi.setIpFinder(ipFinder);
         return discoverySpi;
-    }
-
-    private DataStorageConfiguration dataStorageConfiguration(boolean persistenceEnabled) {
-        DataRegionConfiguration region = new DataRegionConfiguration();
-        region.setName("paymentsRegion");
-        region.setPersistenceEnabled(persistenceEnabled);
-        region.setInitialSize(256L * 1024 * 1024);
-        region.setMaxSize(512L * 1024 * 1024);
-
-        DataStorageConfiguration storage = new DataStorageConfiguration();
-        storage.setDefaultDataRegionConfiguration(region);
-        storage.setWalSegments(8);
-        storage.setWalSegmentSize(64 * 1024 * 1024);
-        return storage;
-    }
-
-    private <K, V> CacheConfiguration<K, V> cacheConfiguration(
-            String name,
-            Class<K> keyClass,
-            Class<V> valueClass
-    ) {
-        CacheConfiguration<K, V> cacheConfiguration = new CacheConfiguration<>(name);
-        cacheConfiguration.setCacheMode(CacheMode.PARTITIONED);
-        cacheConfiguration.setBackups(1);
-        cacheConfiguration.setStatisticsEnabled(true);
-        cacheConfiguration.setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL);
-        cacheConfiguration.setIndexedTypes(keyClass, valueClass);
-        cacheConfiguration.setSqlSchema("PUBLIC");
-        return cacheConfiguration;
     }
 }

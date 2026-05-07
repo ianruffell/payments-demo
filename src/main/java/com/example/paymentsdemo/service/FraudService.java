@@ -6,10 +6,12 @@ import com.example.paymentsdemo.domain.RiskTier;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.context.annotation.Profile;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!merchant-simulator")
 public class FraudService {
 
     private static final Set<String> HIGH_RISK_CATEGORIES = Set.of("GAMBLING", "CRYPTO", "TRAVEL", "DIGITAL_GOODS");

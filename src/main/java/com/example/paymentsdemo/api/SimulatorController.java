@@ -2,6 +2,7 @@ package com.example.paymentsdemo.api;
 
 import com.example.paymentsdemo.dto.SimulatorStatusResponse;
 import com.example.paymentsdemo.simulator.PaymentSimulator;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/simulator")
+@Profile("!merchant-simulator")
 public class SimulatorController {
 
     private final PaymentSimulator paymentSimulator;

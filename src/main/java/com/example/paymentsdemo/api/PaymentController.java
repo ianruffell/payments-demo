@@ -2,10 +2,13 @@ package com.example.paymentsdemo.api;
 
 import com.example.paymentsdemo.dto.AuthorizePaymentRequest;
 import com.example.paymentsdemo.dto.PaymentResponse;
+import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.service.PaymentOperationResult;
 import com.example.paymentsdemo.service.PaymentService;
 import jakarta.validation.Valid;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/payments")
+@Profile("!merchant-simulator")
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -24,10 +28,11 @@ public class PaymentController {
     }
 
     @PostMapping("/authorize")
-    @ResponseStatus(HttpStatus.CREATED)
-    public PaymentResponse authorize(@Valid @RequestBody AuthorizePaymentRequest request) {
+    public ResponseEntity<PaymentResponse> authorize(@Valid @RequestBody AuthorizePaymentRequest request) {
         PaymentOperationResult result = paymentService.authorize(request);
-        return PaymentResponse.fromPayment(result.payment(), result.message(), result.duplicate());
+        PaymentResponse response = PaymentResponse.fromPayment(result.payment(), result.message(), result.duplicate());
+        HttpStatus status = result.payment().getStatus() == PaymentStatus.PENDING_MERCHANT ? HttpStatus.ACCEPTED : HttpStatus.CREATED;
+        return ResponseEntity.status(status).body(response);
     }
 
     @PostMapping("/{paymentId}/capture")

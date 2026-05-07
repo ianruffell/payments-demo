@@ -4,5 +4,7 @@ public enum PaymentStatus {
     AUTHORIZED,
     CAPTURED,
     DECLINED,
-    REFUNDED
+    REFUNDED,
+    PENDING_MERCHANT,
+    TIMED_OUT
 }

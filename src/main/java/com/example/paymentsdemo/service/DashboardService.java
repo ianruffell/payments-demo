@@ -19,9 +19,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!merchant-simulator")
 public class DashboardService {
 
     private final Ignite ignite;
@@ -73,6 +75,7 @@ public class DashboardService {
         List<MerchantVolume> topMerchants = topMerchants(recentPayments);
         List<RecentSuspiciousPayment> suspiciousPayments = recentPayments.stream()
                 .filter(row -> Boolean.TRUE.equals(row.get(6)))
+                .filter(row -> !PaymentStatus.PENDING_MERCHANT.name().equals(String.valueOf(row.get(3))))
                 .sorted(Comparator.comparingLong((List<?> row) -> ((Number) row.get(7)).longValue()).reversed())
                 .limit(10)
                 .map(row -> new RecentSuspiciousPayment(
@@ -116,7 +119,13 @@ public class DashboardService {
         }
 
         return accumulators.entrySet().stream()
-                .sorted((left, right) -> Long.compare(right.getValue().count, left.getValue().count))
+                .sorted((left, right) -> {
+                    int byAmount = Long.compare(right.getValue().amountMinor, left.getValue().amountMinor);
+                    if (byAmount != 0) {
+                        return byAmount;
+                    }
+                    return Long.compare(right.getValue().count, left.getValue().count);
+                })
                 .limit(5)
                 .map(entry -> {
                     Merchant merchant = (Merchant) ignite.cache(CacheNames.MERCHANTS).get(entry.getKey());

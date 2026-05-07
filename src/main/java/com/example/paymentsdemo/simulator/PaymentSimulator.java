@@ -3,6 +3,7 @@ package com.example.paymentsdemo.simulator;
 import com.example.paymentsdemo.domain.Account;
 import com.example.paymentsdemo.domain.AccountStatus;
 import com.example.paymentsdemo.domain.Merchant;
+import com.example.paymentsdemo.domain.Payment;
 import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.dto.AuthorizePaymentRequest;
 import com.example.paymentsdemo.service.CacheNames;
@@ -10,7 +11,9 @@ import com.example.paymentsdemo.service.PaymentOperationResult;
 import com.example.paymentsdemo.service.PaymentService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -20,11 +23,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.Ignite;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!merchant-simulator")
 public class PaymentSimulator {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentSimulator.class);
 
     private final Ignite ignite;
     private final PaymentService paymentService;
@@ -37,12 +46,14 @@ public class PaymentSimulator {
     private final ScheduledExecutorService tickExecutor = Executors.newSingleThreadScheduledExecutor();
     private final ScheduledExecutorService delayedExecutor = Executors.newScheduledThreadPool(4);
     private final ExecutorService workerExecutor = Executors.newFixedThreadPool(8);
+    private final ConcurrentHashMap<String, Long> pendingMerchantPayments = new ConcurrentHashMap<>();
+    private final AtomicBoolean missingSeedDataWarningLogged = new AtomicBoolean(false);
 
     public PaymentSimulator(
             Ignite ignite,
             PaymentService paymentService,
             @Value("${demo.seed.accounts:100000}") int accountCount,
-            @Value("${demo.seed.merchants:10000}") int merchantCount,
+            @Value("${demo.seed.merchants:4}") int merchantCount,
             @Value("${demo.simulator.default-rate-per-second:120}") int defaultRatePerSecond,
             @Value("${demo.simulator.target-decline-rate:0.05}") double targetDeclineRate
     ) {
@@ -56,6 +67,7 @@ public class PaymentSimulator {
 
     @PostConstruct
     public void startTicker() {
+        log.info("Payment simulator ticker started.");
         tickExecutor.scheduleAtFixedRate(this::tick, 1, 1, TimeUnit.SECONDS);
     }
 
@@ -70,6 +82,13 @@ public class PaymentSimulator {
     public void start(int newRatePerSecond) {
         ratePerSecond.set(Math.max(1, newRatePerSecond));
         running.set(true);
+
+        log.info(
+                "Payment simulator started at {} payment(s)/sec [accounts={}, merchants={}]",
+                ratePerSecond.get(),
+                ignite.cache(CacheNames.ACCOUNTS).sizeLong(),
+                ignite.cache(CacheNames.MERCHANTS).sizeLong()
+        );
     }
 
     public void stop() {
@@ -89,6 +108,8 @@ public class PaymentSimulator {
     }
 
     private void tick() {
+        processPendingMerchantPayments();
+
         if (!running.get()) {
             return;
         }
@@ -104,24 +125,77 @@ public class PaymentSimulator {
                 : buildApprovedRequest();
 
         if (simulatedRequest == null) {
+            if (missingSeedDataWarningLogged.compareAndSet(false, true)) {
+                log.warn("Payment simulator could not build a request from the available account and merchant data.");
+            }
             return;
         }
 
         String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         generatedPayments.incrementAndGet();
 
-        PaymentOperationResult result = paymentService.authorize(
-                new AuthorizePaymentRequest(
-                        paymentId,
-                        simulatedRequest.account().getAccountId(),
-                        simulatedRequest.merchant().getMerchantId(),
-                        simulatedRequest.amountMinor(),
-                        simulatedRequest.currency()
-                )
-        );
+        PaymentOperationResult result;
+        try {
+            result = paymentService.authorize(
+                    new AuthorizePaymentRequest(
+                            paymentId,
+                            simulatedRequest.account().getAccountId(),
+                            simulatedRequest.merchant().getMerchantId(),
+                            simulatedRequest.amountMinor(),
+                            simulatedRequest.currency()
+                    )
+            );
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Payment simulator authorization failed [paymentId={}, accountId={}, merchantId={}, amountMinor={}, currency={}]",
+                    paymentId,
+                    simulatedRequest.account().getAccountId(),
+                    simulatedRequest.merchant().getMerchantId(),
+                    simulatedRequest.amountMinor(),
+                    simulatedRequest.currency(),
+                    e
+            );
+            return;
+        }
+
+        if (result.payment().getStatus() == PaymentStatus.PENDING_MERCHANT) {
+            pendingMerchantPayments.put(paymentId, Instant.now().toEpochMilli());
+            return;
+        }
 
         if (result.payment().getStatus() == PaymentStatus.AUTHORIZED && ThreadLocalRandom.current().nextDouble() < 0.84) {
             delayedExecutor.schedule(() -> captureThenMaybeRefund(paymentId), randomDelay(200, 1_200), TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void processPendingMerchantPayments() {
+        if (pendingMerchantPayments.isEmpty()) {
+            return;
+        }
+
+        long now = Instant.now().toEpochMilli();
+        for (var entry : pendingMerchantPayments.entrySet()) {
+            Payment payment = (Payment) ignite.cache(CacheNames.PAYMENTS).get(entry.getKey());
+            if (payment == null) {
+                pendingMerchantPayments.remove(entry.getKey());
+                continue;
+            }
+
+            if (payment.getStatus() == PaymentStatus.AUTHORIZED) {
+                pendingMerchantPayments.remove(entry.getKey());
+                if (ThreadLocalRandom.current().nextDouble() < 0.84) {
+                    delayedExecutor.schedule(() -> captureThenMaybeRefund(entry.getKey()), randomDelay(200, 1_200), TimeUnit.MILLISECONDS);
+                }
+                continue;
+            }
+
+            if (payment.getStatus() == PaymentStatus.DECLINED
+                    || payment.getStatus() == PaymentStatus.TIMED_OUT
+                    || payment.getStatus() == PaymentStatus.CAPTURED
+                    || payment.getStatus() == PaymentStatus.REFUNDED
+                    || now - entry.getValue() > 15_000L) {
+                pendingMerchantPayments.remove(entry.getKey());
+            }
         }
     }
 

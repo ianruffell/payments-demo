@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<gridgain-license version="2.1">
+<id>e73cdbea-db95-4efc-8180-13d6b477b5fe</id>
+<issue-date>04/21/2026</issue-date>
+<contract-start-date>04/21/2026</contract-start-date>
+<contract-end-date>12/31/2026</contract-end-date>
+<maintenance-time>0</maintenance-time>
+<user-org>MariaDB</user-org>
+<license-note>GridGain v8 for SE use</license-note>
+<user-www>http://mariadb.com</user-www>
+<type>ENT</type>
+<expire-date>12/31/2026</expire-date>
+<max-nodes>0</max-nodes>
+<max-cpus>0</max-cpus>
+<max-computers>0</max-computers>
+<grace-period>120</grace-period>
+<max-uptime>0</max-uptime>
+<signature>302D0215009278B4BDFC3EBD0E3E2A58D8BAE52C07301F96F7021422D93417A7B8E180FEA017404B8834A2B32FA74D</signature>
+<signature2>302D021500824BB9C5C70876FCE92FC02D0D3FDAACE32349950214009A347A912AFE75F4804330C767569A872976E6</signature2>
+<enabled-feature name="signature2"/>
+<profile name="servers">
+<client-mode>false</client-mode>
+<max-nodes>0</max-nodes>
+<max-cpus>0</max-cpus>
+<max-computers>0</max-computers>
+</profile>
+<profile name="clients">
+<client-mode>true</client-mode>
+<max-nodes>0</max-nodes>
+<max-cpus>0</max-cpus>
+<max-computers>0</max-computers>
+</profile>
+</gridgain-license>

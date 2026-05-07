@@ -1,0 +1,11 @@
+.git
+.settings
+target/*
+!target/gridgain-payments-demo-0.0.1-SNAPSHOT.jar
+.classpath
+.project
+README.md
+gridgain
+mysql
+gridgain-license.xml
+docker-compose.yml

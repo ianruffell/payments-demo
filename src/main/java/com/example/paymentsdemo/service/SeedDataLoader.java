@@ -8,13 +8,19 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteDataStreamer;
+import org.springframework.context.annotation.Profile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!merchant-simulator")
 public class SeedDataLoader implements ApplicationRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(SeedDataLoader.class);
 
     private static final List<String> CURRENCIES = List.of("GBP", "EUR", "USD");
     private static final List<String> COUNTRIES = List.of("GB", "DE", "FR", "ES", "US", "NL", "NG", "BR");
@@ -30,30 +36,107 @@ public class SeedDataLoader implements ApplicationRunner {
     );
 
     private final Ignite ignite;
+    private final boolean enabled;
     private final int accountCount;
     private final int merchantCount;
+    private final String merchantServiceUrlPattern;
 
     public SeedDataLoader(
             Ignite ignite,
+            @Value("${demo.seed.enabled:true}") boolean enabled,
             @Value("${demo.seed.accounts:100000}") int accountCount,
-            @Value("${demo.seed.merchants:10000}") int merchantCount
+            @Value("${demo.seed.merchants:4}") int merchantCount,
+            @Value("${demo.seed.merchant-service-url-pattern:http://merchant-%05d:8080/api/merchant/payments}") String merchantServiceUrlPattern
     ) {
         this.ignite = ignite;
+        this.enabled = enabled;
         this.accountCount = accountCount;
         this.merchantCount = merchantCount;
+        this.merchantServiceUrlPattern = merchantServiceUrlPattern;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (ignite.cache(CacheNames.ACCOUNTS).sizeLong() > 0 || ignite.cache(CacheNames.MERCHANTS).sizeLong() > 0) {
+        if (!enabled) {
+            log.info("Seed data loading is disabled.");
             return;
         }
 
-        loadAccounts();
-        loadMerchants();
+        long accountCacheSize = ignite.cache(CacheNames.ACCOUNTS).sizeLong();
+        long merchantCacheSize = ignite.cache(CacheNames.MERCHANTS).sizeLong();
+
+        log.info("Seed cache sizes before loading: accounts={}, merchants={}", accountCacheSize, merchantCacheSize);
+
+        if ((accountCacheSize > 0 || merchantCacheSize > 0) && !seedDataReadable()) {
+            log.warn("Existing demo seed data is not readable by this application. Resetting demo caches and reloading.");
+            resetDemoCaches();
+            accountCacheSize = 0;
+            merchantCacheSize = 0;
+        }
+
+        if (accountCacheSize == 0) {
+            loadAccounts();
+        } else {
+            log.info("Skipping account seed load because cache already contains {} entries.", accountCacheSize);
+        }
+
+        if (merchantCacheSize == 0) {
+            loadMerchants();
+        } else {
+            log.info("Skipping merchant seed load because cache already contains {} entries.", merchantCacheSize);
+        }
+    }
+
+    private boolean seedDataReadable() {
+        try {
+            long accountCacheSize = ignite.cache(CacheNames.ACCOUNTS).sizeLong();
+            long merchantCacheSize = ignite.cache(CacheNames.MERCHANTS).sizeLong();
+
+            if (accountCacheSize > 0 && accountCacheSize != accountCount) {
+                return false;
+            }
+
+            if (merchantCacheSize > 0 && merchantCacheSize != merchantCount) {
+                return false;
+            }
+
+            if (accountCacheSize > 0 && ignite.cache(CacheNames.ACCOUNTS).get("ACC-000001") == null) {
+                return false;
+            }
+
+            if (merchantCacheSize > 0) {
+                Merchant merchant = (Merchant) ignite.cache(CacheNames.MERCHANTS).get("MER-00001");
+                if (merchant == null || merchant.getServiceUrl() == null || merchant.getServiceUrl().isBlank()) {
+                    return false;
+                }
+
+                if (!merchantUrlFor(1).equals(merchant.getServiceUrl())) {
+                    return false;
+                }
+            }
+
+            if (merchantCount > 0 && ignite.cache(CacheNames.MERCHANTS).get("MER-%05d".formatted(merchantCount)) == null) {
+                return false;
+            }
+
+            return true;
+        } catch (RuntimeException e) {
+            log.warn("Failed to read existing seed data.", e);
+            return false;
+        }
+    }
+
+    private void resetDemoCaches() {
+        ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS).removeAll();
+        ignite.cache(CacheNames.PAYMENTS).removeAll();
+        ignite.cache(CacheNames.LEDGER_ENTRIES).removeAll();
+        ignite.cache(CacheNames.ACCOUNTS).removeAll();
+        ignite.cache(CacheNames.MERCHANTS).removeAll();
     }
 
     private void loadAccounts() {
+        log.info("Loading {} accounts into GridGain.", accountCount);
+
         try (IgniteDataStreamer<String, Account> streamer = ignite.dataStreamer(CacheNames.ACCOUNTS)) {
             streamer.perNodeBufferSize(4096);
 
@@ -70,9 +153,13 @@ public class SeedDataLoader implements ApplicationRunner {
                 streamer.addData(accountId, account);
             }
         }
+
+        log.info("Finished loading accounts.");
     }
 
     private void loadMerchants() {
+        log.info("Loading {} merchants into GridGain.", merchantCount);
+
         try (IgniteDataStreamer<String, Merchant> streamer = ignite.dataStreamer(CacheNames.MERCHANTS)) {
             streamer.perNodeBufferSize(2048);
 
@@ -85,11 +172,14 @@ public class SeedDataLoader implements ApplicationRunner {
                         randomOf(COUNTRIES),
                         true,
                         ThreadLocalRandom.current().nextLong(25_00, 15_000_00),
-                        ThreadLocalRandom.current().nextLong(250_000_00, 2_500_000_00L)
+                        ThreadLocalRandom.current().nextLong(250_000_00, 2_500_000_00L),
+                        merchantUrlFor(i)
                 );
                 streamer.addData(merchantId, merchant);
             }
         }
+
+        log.info("Finished loading merchants.");
     }
 
     private RiskTier randomRiskTier() {
@@ -105,5 +195,9 @@ public class SeedDataLoader implements ApplicationRunner {
 
     private <T> T randomOf(List<T> values) {
         return values.get(ThreadLocalRandom.current().nextInt(values.size()));
+    }
+
+    private String merchantUrlFor(int merchantIndex) {
+        return merchantServiceUrlPattern.formatted(merchantIndex);
     }
 }

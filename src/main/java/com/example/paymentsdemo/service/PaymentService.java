@@ -5,20 +5,25 @@ import com.example.paymentsdemo.domain.AccountStatus;
 import com.example.paymentsdemo.domain.LedgerDirection;
 import com.example.paymentsdemo.domain.LedgerEntry;
 import com.example.paymentsdemo.domain.Merchant;
+import com.example.paymentsdemo.domain.MerchantPaymentAttempt;
+import com.example.paymentsdemo.domain.MerchantRequestStatus;
 import com.example.paymentsdemo.domain.Payment;
 import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.dto.AuthorizePaymentRequest;
+import com.example.paymentsdemo.dto.MerchantAuthorizationResult;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.Iterator;
+import java.util.List;
 import java.util.UUID;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
-import org.apache.ignite.cache.query.ScanQuery;
+import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.transactions.Transaction;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
@@ -26,21 +31,39 @@ import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
+@Profile("!merchant-simulator")
 public class PaymentService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
+    private final MerchantDispatchService merchantDispatchService;
+    private final String processorCallbackUrl;
+    private final long merchantTimeoutMs;
 
-    public PaymentService(Ignite ignite, FraudService fraudService) {
+    public PaymentService(
+            Ignite ignite,
+            FraudService fraudService,
+            MerchantDispatchService merchantDispatchService,
+            @Value("${demo.processor.callback-url:http://payments-demo-app:8080/api/merchant-results}") String processorCallbackUrl,
+            @Value("${demo.processor.merchant-timeout-ms:10000}") long merchantTimeoutMs
+    ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
+        this.merchantDispatchService = merchantDispatchService;
+        this.processorCallbackUrl = processorCallbackUrl;
+        this.merchantTimeoutMs = merchantTimeoutMs;
     }
 
     public PaymentOperationResult authorize(AuthorizePaymentRequest request) {
         IgniteCache<String, Payment> payments = ignite.cache(CacheNames.PAYMENTS);
         IgniteCache<String, Account> accounts = ignite.cache(CacheNames.ACCOUNTS);
         IgniteCache<String, Merchant> merchants = ignite.cache(CacheNames.MERCHANTS);
-        IgniteCache<String, LedgerEntry> ledgerEntries = ignite.cache(CacheNames.LEDGER_ENTRIES);
+        IgniteCache<String, MerchantPaymentAttempt> attempts = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS);
+
+        Merchant merchantForDispatch;
+        Payment payment;
+        MerchantPaymentAttempt attempt = null;
+        String message;
 
         try (Transaction tx = ignite.transactions().txStart(
                 TransactionConcurrency.PESSIMISTIC,
@@ -65,48 +88,166 @@ public class PaymentService {
             long now = Instant.now().toEpochMilli();
             double fraudScore = fraudService.score(account, merchant, request.amountMinor());
             String declineReason = validateAuthorization(request, account, merchant, fraudScore);
-            PaymentStatus status = declineReason == null ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED;
             boolean suspicious = fraudService.isSuspicious(fraudScore);
 
-            Payment payment = new Payment(
-                    request.paymentId(),
-                    request.accountId(),
-                    request.merchantId(),
-                    request.amountMinor(),
-                    request.currency(),
-                    status,
-                    now,
-                    now,
-                    declineReason,
-                    fraudScore,
-                    suspicious,
-                    0L,
-                    0L
-            );
-
-            payments.put(payment.getPaymentId(), payment);
-
-            if (status == PaymentStatus.AUTHORIZED) {
-                account.setAvailableBalanceMinor(account.getAvailableBalanceMinor() - request.amountMinor());
-                accounts.put(account.getAccountId(), account);
-                ledgerEntries.put(
-                        UUID.randomUUID().toString(),
-                        new LedgerEntry(
-                                UUID.randomUUID().toString(),
-                                payment.getPaymentId(),
-                                payment.getAccountId(),
-                                payment.getMerchantId(),
-                                LedgerDirection.DEBIT,
-                                payment.getAmountMinor(),
-                                payment.getCurrency(),
-                                "AUTH_HOLD",
-                                now
-                        )
+            if (declineReason == null) {
+                payment = new Payment(
+                        request.paymentId(),
+                        request.accountId(),
+                        request.merchantId(),
+                        request.amountMinor(),
+                        request.currency(),
+                        PaymentStatus.PENDING_MERCHANT,
+                        now,
+                        now,
+                        null,
+                        fraudScore,
+                        suspicious,
+                        0L,
+                        0L
                 );
+
+                attempt = new MerchantPaymentAttempt(
+                        payment.getPaymentId(),
+                        merchant.getMerchantId(),
+                        MerchantRequestStatus.PENDING,
+                        merchant.getServiceUrl(),
+                        processorCallbackUrl,
+                        now,
+                        now + merchantTimeoutMs,
+                        0L,
+                        null,
+                        "Awaiting merchant response"
+                );
+                attempts.put(payment.getPaymentId(), attempt);
+                message = "Dispatched to merchant";
+            } else {
+                payment = new Payment(
+                        request.paymentId(),
+                        request.accountId(),
+                        request.merchantId(),
+                        request.amountMinor(),
+                        request.currency(),
+                        PaymentStatus.DECLINED,
+                        now,
+                        now,
+                        declineReason,
+                        fraudScore,
+                        suspicious,
+                        0L,
+                        0L
+                );
+                message = "Payment declined";
             }
 
+            payments.put(payment.getPaymentId(), payment);
             tx.commit();
-            return new PaymentOperationResult(payment, declineReason == null ? "Payment authorized" : "Payment declined", false);
+            merchantForDispatch = merchant;
+        }
+
+        if (attempt != null) {
+            merchantDispatchService.dispatch(payment, merchantForDispatch, attempt);
+        }
+
+        return new PaymentOperationResult(payment, message, false);
+    }
+
+    public PaymentOperationResult processMerchantResult(MerchantAuthorizationResult result) {
+        IgniteCache<String, Payment> payments = ignite.cache(CacheNames.PAYMENTS);
+        IgniteCache<String, MerchantPaymentAttempt> attempts = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS);
+        IgniteCache<String, Account> accounts = ignite.cache(CacheNames.ACCOUNTS);
+        IgniteCache<String, Merchant> merchants = ignite.cache(CacheNames.MERCHANTS);
+        IgniteCache<String, LedgerEntry> ledgerEntries = ignite.cache(CacheNames.LEDGER_ENTRIES);
+
+        try (Transaction tx = ignite.transactions().txStart(
+                TransactionConcurrency.PESSIMISTIC,
+                TransactionIsolation.REPEATABLE_READ
+        )) {
+            Payment payment = payments.get(result.paymentId());
+            if (payment == null) {
+                throw new ResponseStatusException(NOT_FOUND, "Unknown paymentId");
+            }
+
+            MerchantPaymentAttempt attempt = attempts.get(result.paymentId());
+            if (attempt == null) {
+                throw new ResponseStatusException(NOT_FOUND, "Unknown merchant attempt");
+            }
+
+            if (!attempt.getMerchantId().equals(result.merchantId())) {
+                throw new ResponseStatusException(BAD_REQUEST, "Merchant result does not match payment merchant");
+            }
+
+            long now = Math.max(Instant.now().toEpochMilli(), result.respondedAtEpochMs());
+
+            attempt.setRespondedAtEpochMs(now);
+            attempt.setMerchantReference(result.merchantReference());
+            attempt.setMessage(normalizeReason(result.reason(), result.approved() ? "Merchant approved" : "MERCHANT_DECLINED"));
+
+            if (payment.getStatus() != PaymentStatus.PENDING_MERCHANT || attempt.getStatus() != MerchantRequestStatus.PENDING) {
+                if (attempt.getStatus() == MerchantRequestStatus.TIMED_OUT) {
+                    attempt.setStatus(MerchantRequestStatus.LATE_RESPONSE);
+                }
+                attempts.put(attempt.getPaymentId(), attempt);
+                tx.commit();
+                return new PaymentOperationResult(payment, "Ignored completed merchant response", false);
+            }
+
+            if (now > attempt.getDeadlineEpochMs()) {
+                markTimedOut(payment, attempt, now);
+                attempt.setStatus(MerchantRequestStatus.LATE_RESPONSE);
+                attempts.put(attempt.getPaymentId(), attempt);
+                payments.put(payment.getPaymentId(), payment);
+                tx.commit();
+                return new PaymentOperationResult(payment, "Merchant response arrived after timeout", false);
+            }
+
+            if (!result.approved()) {
+                payment.setStatus(PaymentStatus.DECLINED);
+                payment.setDeclineReason(normalizeReason(result.reason(), "MERCHANT_DECLINED"));
+                payment.setUpdatedAtEpochMs(now);
+                attempt.setStatus(MerchantRequestStatus.DECLINED);
+                attempts.put(attempt.getPaymentId(), attempt);
+                payments.put(payment.getPaymentId(), payment);
+                tx.commit();
+                return new PaymentOperationResult(payment, "Merchant declined payment", false);
+            }
+
+            Account account = accounts.get(payment.getAccountId());
+            Merchant merchant = merchants.get(payment.getMerchantId());
+            String declineReason = validateApprovedMerchantResponse(payment, account, merchant);
+
+            if (declineReason != null) {
+                payment.setStatus(PaymentStatus.DECLINED);
+                payment.setDeclineReason(declineReason);
+                payment.setUpdatedAtEpochMs(now);
+                attempt.setStatus(MerchantRequestStatus.DECLINED);
+                attempt.setMessage(declineReason);
+                attempts.put(attempt.getPaymentId(), attempt);
+                payments.put(payment.getPaymentId(), payment);
+                tx.commit();
+                return new PaymentOperationResult(payment, "Payment declined after merchant approval", false);
+            }
+
+            authorizeApprovedPayment(payment, account, ignite.cache(CacheNames.ACCOUNTS), ledgerEntries, now);
+            attempt.setStatus(MerchantRequestStatus.APPROVED);
+            attempts.put(attempt.getPaymentId(), attempt);
+            payments.put(payment.getPaymentId(), payment);
+            tx.commit();
+            return new PaymentOperationResult(payment, "Payment authorized", false);
+        }
+    }
+
+    public void markTimedOutPayments() {
+        IgniteCache<String, MerchantPaymentAttempt> attempts = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS);
+
+        List<List<?>> timedOutIds = attempts.query(new SqlFieldsQuery(
+                "SELECT paymentId FROM MerchantPaymentAttempt WHERE status = ? AND deadlineEpochMs <= ?"
+        ).setArgs(MerchantRequestStatus.PENDING, Instant.now().toEpochMilli())).getAll();
+
+        for (List<?> row : timedOutIds) {
+            if (!row.isEmpty() && row.get(0) != null) {
+                markTimedOutPayment(String.valueOf(row.get(0)));
+            }
         }
     }
 
@@ -205,6 +346,74 @@ public class PaymentService {
         }
     }
 
+    private void markTimedOutPayment(String paymentId) {
+        IgniteCache<String, Payment> payments = ignite.cache(CacheNames.PAYMENTS);
+        IgniteCache<String, MerchantPaymentAttempt> attempts = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS);
+
+        try (Transaction tx = ignite.transactions().txStart(
+                TransactionConcurrency.PESSIMISTIC,
+                TransactionIsolation.REPEATABLE_READ
+        )) {
+            Payment payment = payments.get(paymentId);
+            MerchantPaymentAttempt attempt = attempts.get(paymentId);
+
+            if (payment == null || attempt == null) {
+                tx.commit();
+                return;
+            }
+
+            if (payment.getStatus() != PaymentStatus.PENDING_MERCHANT || attempt.getStatus() != MerchantRequestStatus.PENDING) {
+                tx.commit();
+                return;
+            }
+
+            long now = Instant.now().toEpochMilli();
+            markTimedOut(payment, attempt, now);
+            payments.put(paymentId, payment);
+            attempts.put(paymentId, attempt);
+            tx.commit();
+        }
+    }
+
+    private void markTimedOut(Payment payment, MerchantPaymentAttempt attempt, long now) {
+        payment.setStatus(PaymentStatus.TIMED_OUT);
+        payment.setDeclineReason("MERCHANT_TIMEOUT");
+        payment.setUpdatedAtEpochMs(now);
+        attempt.setStatus(MerchantRequestStatus.TIMED_OUT);
+        attempt.setRespondedAtEpochMs(now);
+        attempt.setMessage("MERCHANT_TIMEOUT");
+    }
+
+    private void authorizeApprovedPayment(
+            Payment payment,
+            Account account,
+            IgniteCache<String, Account> accounts,
+            IgniteCache<String, LedgerEntry> ledgerEntries,
+            long now
+    ) {
+        payment.setStatus(PaymentStatus.AUTHORIZED);
+        payment.setDeclineReason(null);
+        payment.setUpdatedAtEpochMs(now);
+
+        account.setAvailableBalanceMinor(account.getAvailableBalanceMinor() - payment.getAmountMinor());
+        accounts.put(account.getAccountId(), account);
+
+        ledgerEntries.put(
+                UUID.randomUUID().toString(),
+                new LedgerEntry(
+                        UUID.randomUUID().toString(),
+                        payment.getPaymentId(),
+                        payment.getAccountId(),
+                        payment.getMerchantId(),
+                        LedgerDirection.DEBIT,
+                        payment.getAmountMinor(),
+                        payment.getCurrency(),
+                        "AUTH_HOLD",
+                        now
+                )
+        );
+    }
+
     private String validateAuthorization(
             AuthorizePaymentRequest request,
             Account account,
@@ -217,6 +426,10 @@ public class PaymentService {
 
         if (!merchant.isActive()) {
             return "MERCHANT_INACTIVE";
+        }
+
+        if (merchant.getServiceUrl() == null || merchant.getServiceUrl().isBlank()) {
+            return "MERCHANT_UNAVAILABLE";
         }
 
         if (!account.getCurrency().equalsIgnoreCase(request.currency())) {
@@ -242,21 +455,61 @@ public class PaymentService {
         return null;
     }
 
+    private String validateApprovedMerchantResponse(Payment payment, Account account, Merchant merchant) {
+        if (account == null) {
+            return "UNKNOWN_ACCOUNT";
+        }
+
+        if (merchant == null) {
+            return "UNKNOWN_MERCHANT";
+        }
+
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            return "ACCOUNT_NOT_ACTIVE";
+        }
+
+        if (!merchant.isActive()) {
+            return "MERCHANT_INACTIVE";
+        }
+
+        if (payment.getAmountMinor() > merchant.getMaxAmountMinor()) {
+            return "MERCHANT_MAX_AMOUNT_EXCEEDED";
+        }
+
+        if (merchantDailyTotal(merchant.getMerchantId()) + payment.getAmountMinor() > merchant.getDailyLimitMinor()) {
+            return "MERCHANT_DAILY_LIMIT_EXCEEDED";
+        }
+
+        if (account.getAvailableBalanceMinor() < payment.getAmountMinor()) {
+            return "INSUFFICIENT_FUNDS";
+        }
+
+        return null;
+    }
+
     private long merchantDailyTotal(String merchantId) {
         long startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli();
-        ScanQuery<String, Payment> query = new ScanQuery<>((key, payment) ->
-                merchantId.equals(payment.getMerchantId())
-                        && payment.getCreatedAtEpochMs() >= startOfDay
-                        && payment.getStatus() != PaymentStatus.DECLINED
+        SqlFieldsQuery query = new SqlFieldsQuery(
+                "SELECT COALESCE(SUM(amountMinor), 0) " +
+                        "FROM Payment " +
+                        "WHERE merchantId = ? " +
+                        "  AND createdAtEpochMs >= ? " +
+                        "  AND status IN (?, ?, ?)"
+        ).setArgs(
+                merchantId,
+                startOfDay,
+                PaymentStatus.AUTHORIZED,
+                PaymentStatus.CAPTURED,
+                PaymentStatus.REFUNDED
         );
 
-        long total = 0L;
         try (var cursor = ignite.cache(CacheNames.PAYMENTS).query(query)) {
-            Iterator<javax.cache.Cache.Entry<String, Payment>> iterator = cursor.iterator();
-            while (iterator.hasNext()) {
-                total += iterator.next().getValue().getAmountMinor();
-            }
+            var row = cursor.getAll().stream().findFirst().orElse(null);
+            return row == null || row.isEmpty() || row.get(0) == null ? 0L : ((Number) row.get(0)).longValue();
         }
-        return total;
+    }
+
+    private String normalizeReason(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

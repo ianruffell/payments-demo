@@ -28,6 +28,9 @@ public class Merchant implements Serializable {
     @QuerySqlField
     private long dailyLimitMinor;
 
+    @QuerySqlField
+    private String serviceUrl;
+
     public Merchant() {
     }
 
@@ -38,7 +41,8 @@ public class Merchant implements Serializable {
             String country,
             boolean active,
             long maxAmountMinor,
-            long dailyLimitMinor
+            long dailyLimitMinor,
+            String serviceUrl
     ) {
         this.merchantId = merchantId;
         this.name = name;
@@ -47,6 +51,7 @@ public class Merchant implements Serializable {
         this.active = active;
         this.maxAmountMinor = maxAmountMinor;
         this.dailyLimitMinor = dailyLimitMinor;
+        this.serviceUrl = serviceUrl;
     }
 
     public String getMerchantId() {
@@ -103,5 +108,13 @@ public class Merchant implements Serializable {
 
     public void setDailyLimitMinor(long dailyLimitMinor) {
         this.dailyLimitMinor = dailyLimitMinor;
+    }
+
+    public String getServiceUrl() {
+        return serviceUrl;
+    }
+
+    public void setServiceUrl(String serviceUrl) {
+        this.serviceUrl = serviceUrl;
     }
 }

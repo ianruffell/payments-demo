@@ -7,12 +7,21 @@ spring:
 
 demo:
   gridgain:
-    persistence-enabled: false
+    instance-name: payments-demo-client
+    discovery-addresses:
+      - gg8-node1:47500
+      - gg8-node2:47501
+      - gg8-node3:47502
   seed:
+    enabled: true
     accounts: 100000
-    merchants: 10000
+    merchants: 4
+    merchant-service-url-pattern: http://merchant-%05d:8080/api/merchant/payments
   simulator:
     default-rate-per-second: 120
     target-decline-rate: 0.05
   fraud:
     threshold: 72.0
+  processor:
+    callback-url: http://payments-demo-app:8080/api/merchant-results
+    merchant-timeout-ms: 10000

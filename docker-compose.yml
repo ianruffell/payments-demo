@@ -1,0 +1,155 @@
+#  Copyright (C) GridGain Systems. All Rights Reserved.
+#  _________        _____ __________________        _____
+#  __  ____/___________(_)______  /__  ____/______ ____(_)_______
+#  _  / __  __  ___/__  / _  __  / _  / __  _  __ `/__  / __  __ \
+#  / /_/ /  _  /    _  /  / /_/ /  / /_/ /  / /_/ / _  /  _  / / /
+#  \____/   /_/     /_/   \_,__/   \____/   \__,_/  /_/   /_/ /_/
+
+name: gridgain
+
+x-gridgain-def:
+  &gridgain-def
+  image: gridgain/ultimate:8.9.32
+  environment:
+    JVM_MAX_MEM: "2g"
+    JVM_MIN_MEM: "1g"
+    CONFIG_URI: "/opt/gridgain/etc/ignite-config.xml"
+    OPTION_LIBS: "control-center-agent"
+  volumes:
+    - ./gridgain-license.xml:/opt/gridgain/gridgain-license.xml
+    - ./src/main/resources/ignite-config.xml:/opt/gridgain/etc/ignite-config.xml
+
+services:
+  gg8-node1:
+    << : *gridgain-def
+    ports:
+      - 20800:10800
+      - 11211:11211
+      - 47100:47100
+      - 47500:47500
+  gg8-node2:
+    << : *gridgain-def
+    ports:
+      - 20801:10800
+      - 11212:11211
+      - 47101:47100
+      - 47501:47501
+  gg8-node3:
+    << : *gridgain-def
+    ports:
+      - 20802:10800
+      - 11213:11211
+      - 47102:47100
+      - 47502:47501
+      
+  control-center-backend:
+    image: gridgain/control-center-backend:latest
+    restart: on-failure
+    environment:
+      # Tune JVM options for Control Center if needed
+      - JVM_OPTS=
+
+  control-center-frontend:
+    image: gridgain/control-center-frontend:latest
+    depends_on:
+      - control-center-backend
+    volumes:
+      # Nginx config for routing UI -> backend
+      - ./src/main/resources/control-center.conf:/etc/nginx/control-center.conf
+    ports:
+      # HOST:CONTAINER
+      - "8008:8008"
+
+  merchant-00001:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00001
+      DEMO_MERCHANT_NAME: Merchant 00001
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 350
+      DEMO_MERCHANT_MAX_DELAY_MS: 2400
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 11000
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 13000
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.02
+      DEMO_MERCHANT_APPROVAL_RATE: 0.98
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1400000
+    restart: on-failure
+
+  merchant-00002:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00002
+      DEMO_MERCHANT_NAME: Merchant 00002
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 500
+      DEMO_MERCHANT_MAX_DELAY_MS: 3200
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 11250
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 13500
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.03
+      DEMO_MERCHANT_APPROVAL_RATE: 0.97
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1250000
+    restart: on-failure
+
+  merchant-00003:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00003
+      DEMO_MERCHANT_NAME: Merchant 00003
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 850
+      DEMO_MERCHANT_MAX_DELAY_MS: 4300
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 11500
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 13800
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.04
+      DEMO_MERCHANT_APPROVAL_RATE: 0.96
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1100000
+    restart: on-failure
+
+  merchant-00004:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00004
+      DEMO_MERCHANT_NAME: Merchant 00004
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1200
+      DEMO_MERCHANT_MAX_DELAY_MS: 5200
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 11800
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14200
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.05
+      DEMO_MERCHANT_APPROVAL_RATE: 0.95
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1000000
+    restart: on-failure
+
+  payments-demo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - gg8-node1
+      - gg8-node2
+      - gg8-node3
+      - merchant-00001
+      - merchant-00002
+      - merchant-00003
+      - merchant-00004
+    environment:
+      DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
+      DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
+    ports:
+      - "8080:8080"
+    restart: on-failure
+    volumes:
+      - ./gridgain-license.xml:/app/gridgain-license.xml:ro
+  
