@@ -15,7 +15,6 @@ Small real-time card-transaction demo built with Java, Spring Boot, an external 
 2. Start a simulator to generate authorize traffic, automatic captures, and occasional refunds.
 3. Watch live throughput, approval rate, declines by reason, top merchants, and suspicious payments at `http://localhost:8080`.
 4. Trigger a merchant outage or lower the fraud threshold from the dashboard and watch the metrics change immediately.
-5. Optionally treat MySQL as the external system of record and stream its changes into GridGain through Debezium CDC.
 
 ## Version note
 
@@ -33,29 +32,6 @@ mvn spring-boot:run
 ```
 
 Then open `http://localhost:8080`.
-
-If MySQL is your source of record, disable the demo seeding path so the app does not create overlapping reference data:
-
-```bash
-export DEMO_SEED_ENABLED=false
-```
-
-## External MySQL + Debezium
-
-The repo now includes a starter MySQL schema and Debezium source connector config under [mysql/](</Users/iruffell/workspace/payments-demo/mysql>). The schema mirrors the GridGain-backed record types:
-
-- `accounts`
-- `merchants`
-- `payments`
-- `ledger_entries`
-
-Typical flow:
-
-1. Start Kafka, MySQL, and Kafka Connect with [mysql/docker.sh](/Users/iruffell/workspace/payments-demo/mysql/docker.sh). The script also loads [mysql/schema.sql](/Users/iruffell/workspace/payments-demo/mysql/schema.sql) into the `payments_demo` database.
-2. Register the Debezium source connector with [register-source-connector.sh](/Users/iruffell/workspace/payments-demo/mysql/register-source-connector.sh), which applies [mysql/mysql-payments-source.json](/Users/iruffell/workspace/payments-demo/mysql/mysql-payments-source.json) to Kafka Connect.
-3. Point your GridGain sink at the `accounts`, `merchants`, `payments`, and `ledger_entries` topics.
-
-The source connector unwraps the Debezium envelope and routes topics to the cache names used by the demo. The current Spring Boot app still writes directly to GridGain for its REST workflows, so use the MySQL path for authoritative external writes if you want CDC to be the sole ingestion path.
 
 ## Main APIs
 

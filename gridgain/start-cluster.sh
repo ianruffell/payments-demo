@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NETWORK_NAME="${NETWORK_NAME:-payments-demo-cdc}"
+NETWORK_NAME="${NETWORK_NAME:-payments-demo-network}"
 IMAGE="${GRIDGAIN_IMAGE:-gridgain/community:8.9.30}"
 CONFIG_FILE="${SCRIPT_DIR}/ignite-server-config.xml"
 OPTION_LIBS="${GRIDGAIN_OPTION_LIBS:-ignite-log4j,ignite-spring,ignite-indexing,ignite-opencensus,control-center-agent}"
@@ -11,20 +11,12 @@ JVM_OPTS_VALUE="${GRIDGAIN_JVM_OPTS:-}"
 if [[ -n "${CONTROL_CENTER_AGENT_URIS:-}" ]]; then
     JVM_OPTS_VALUE="${JVM_OPTS_VALUE} -Dcontrol.center.agent.uris=${CONTROL_CENTER_AGENT_URIS}"
 fi
-EXISTING_CONTAINERS=(kafka mysql connect)
 GRIDGAIN_CONTAINERS=(gridgain-node-1 gridgain-node-2 gridgain-node-3)
 HOST_DISCOVERY_PORTS=(47500 47501 47502)
 HOST_COMMUNICATION_PORTS=(47100 47101 47102)
 HOST_CLIENT_PORTS=(10800 10801 10802)
 
 docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}" >/dev/null
-
-for container in "${EXISTING_CONTAINERS[@]}"; do
-    if docker inspect -f '{{json .NetworkSettings.Networks}}' "${container}" | grep -q "\"${NETWORK_NAME}\""; then
-        continue
-    fi
-    docker network connect "${NETWORK_NAME}" "${container}"
-done
 
 for index in "${!GRIDGAIN_CONTAINERS[@]}"; do
     container="${GRIDGAIN_CONTAINERS[$index]}"

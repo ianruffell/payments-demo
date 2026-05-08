@@ -132,6 +132,114 @@ services:
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1000000
     restart: on-failure
 
+  merchant-00005:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00005
+      DEMO_MERCHANT_NAME: Merchant 00005
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1450
+      DEMO_MERCHANT_MAX_DELAY_MS: 5600
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12000
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14400
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.05
+      DEMO_MERCHANT_APPROVAL_RATE: 0.95
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 950000
+    restart: on-failure
+
+  merchant-00006:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00006
+      DEMO_MERCHANT_NAME: Merchant 00006
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1550
+      DEMO_MERCHANT_MAX_DELAY_MS: 6000
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12100
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14600
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.055
+      DEMO_MERCHANT_APPROVAL_RATE: 0.945
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 900000
+    restart: on-failure
+
+  merchant-00007:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00007
+      DEMO_MERCHANT_NAME: Merchant 00007
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1650
+      DEMO_MERCHANT_MAX_DELAY_MS: 6400
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12200
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14800
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.06
+      DEMO_MERCHANT_APPROVAL_RATE: 0.94
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 850000
+    restart: on-failure
+
+  merchant-00008:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00008
+      DEMO_MERCHANT_NAME: Merchant 00008
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1750
+      DEMO_MERCHANT_MAX_DELAY_MS: 6800
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12300
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15000
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.065
+      DEMO_MERCHANT_APPROVAL_RATE: 0.935
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 800000
+    restart: on-failure
+
+  merchant-00009:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00009
+      DEMO_MERCHANT_NAME: Merchant 00009
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1850
+      DEMO_MERCHANT_MAX_DELAY_MS: 7200
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12400
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15200
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.07
+      DEMO_MERCHANT_APPROVAL_RATE: 0.93
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 750000
+    restart: on-failure
+
+  merchant-00010:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: merchant-simulator
+      DEMO_MERCHANT_ID: MER-00010
+      DEMO_MERCHANT_NAME: Merchant 00010
+      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
+      DEMO_MERCHANT_MIN_DELAY_MS: 1950
+      DEMO_MERCHANT_MAX_DELAY_MS: 7600
+      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12500
+      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15400
+      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.075
+      DEMO_MERCHANT_APPROVAL_RATE: 0.925
+      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 700000
+    restart: on-failure
+
   payments-demo-initiator:
     build:
       context: .
@@ -144,6 +252,12 @@ services:
       - merchant-00002
       - merchant-00003
       - merchant-00004
+      - merchant-00005
+      - merchant-00006
+      - merchant-00007
+      - merchant-00008
+      - merchant-00009
+      - merchant-00010
       - payments-demo-app
     environment:
       SPRING_PROFILES_ACTIVE: payment-initiator
@@ -166,6 +280,12 @@ services:
       - merchant-00002
       - merchant-00003
       - merchant-00004
+      - merchant-00005
+      - merchant-00006
+      - merchant-00007
+      - merchant-00008
+      - merchant-00009
+      - merchant-00010
     environment:
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml

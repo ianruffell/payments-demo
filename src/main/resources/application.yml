@@ -15,7 +15,7 @@ demo:
   seed:
     enabled: true
     accounts: 100000
-    merchants: 4
+    merchants: 10
     merchant-service-url-pattern: http://merchant-%05d:8080/api/merchant/payments
   simulator:
     default-rate-per-second: 120

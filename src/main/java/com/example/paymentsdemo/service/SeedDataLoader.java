@@ -46,7 +46,7 @@ public class SeedDataLoader implements ApplicationRunner {
             Ignite ignite,
             @Value("${demo.seed.enabled:true}") boolean enabled,
             @Value("${demo.seed.accounts:100000}") int accountCount,
-            @Value("${demo.seed.merchants:4}") int merchantCount,
+            @Value("${demo.seed.merchants:10}") int merchantCount,
             @Value("${demo.seed.merchant-service-url-pattern:http://merchant-%05d:8080/api/merchant/payments}") String merchantServiceUrlPattern,
             @Value("${demo.seed.merchant-min-daily-limit-minor:10000000000}") long merchantMinDailyLimitMinor
     ) {
