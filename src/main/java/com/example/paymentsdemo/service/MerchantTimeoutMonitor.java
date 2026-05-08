@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class MerchantTimeoutMonitor {
 
     private final PaymentService paymentService;

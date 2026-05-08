@@ -132,6 +132,28 @@ services:
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1000000
     restart: on-failure
 
+  payments-demo-initiator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - gg8-node1
+      - gg8-node2
+      - gg8-node3
+      - merchant-00001
+      - merchant-00002
+      - merchant-00003
+      - merchant-00004
+      - payments-demo-app
+    environment:
+      SPRING_PROFILES_ACTIVE: payment-initiator
+      DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
+      DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
+      DEMO_PROCESSOR_BASE_URL: http://payments-demo-app:8080
+    restart: on-failure
+    volumes:
+      - ./gridgain-license.xml:/app/gridgain-license.xml:ro
+
   payments-demo-app:
     build:
       context: .

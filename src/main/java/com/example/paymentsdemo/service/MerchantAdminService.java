@@ -8,7 +8,7 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class MerchantAdminService {
 
     private final Ignite ignite;

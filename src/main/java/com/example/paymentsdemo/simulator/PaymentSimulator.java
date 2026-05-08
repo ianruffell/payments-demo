@@ -6,11 +6,17 @@ import com.example.paymentsdemo.domain.Merchant;
 import com.example.paymentsdemo.domain.Payment;
 import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.dto.AuthorizePaymentRequest;
+import com.example.paymentsdemo.dto.PaymentResponse;
 import com.example.paymentsdemo.service.CacheNames;
-import com.example.paymentsdemo.service.PaymentOperationResult;
-import com.example.paymentsdemo.service.PaymentService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,18 +31,20 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.Ignite;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Profile;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("payment-initiator")
 public class PaymentSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentSimulator.class);
 
     private final Ignite ignite;
-    private final PaymentService paymentService;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final String processorBaseUrl;
     private final int accountCount;
     private final int merchantCount;
     private final double targetDeclineRate;
@@ -51,14 +59,16 @@ public class PaymentSimulator {
 
     public PaymentSimulator(
             Ignite ignite,
-            PaymentService paymentService,
+            ObjectMapper objectMapper,
+            @Value("${demo.processor.base-url:http://payments-demo-app:8080}") String processorBaseUrl,
             @Value("${demo.seed.accounts:100000}") int accountCount,
             @Value("${demo.seed.merchants:4}") int merchantCount,
             @Value("${demo.simulator.default-rate-per-second:120}") int defaultRatePerSecond,
-            @Value("${demo.simulator.target-decline-rate:0.05}") double targetDeclineRate
+            @Value("${demo.simulator.target-decline-rate:0.02}") double targetDeclineRate
     ) {
         this.ignite = ignite;
-        this.paymentService = paymentService;
+        this.objectMapper = objectMapper;
+        this.processorBaseUrl = processorBaseUrl;
         this.accountCount = accountCount;
         this.merchantCount = merchantCount;
         this.targetDeclineRate = targetDeclineRate;
@@ -67,7 +77,7 @@ public class PaymentSimulator {
 
     @PostConstruct
     public void startTicker() {
-        log.info("Payment simulator ticker started.");
+        log.info("Payment initiator ticker started.");
         tickExecutor.scheduleAtFixedRate(this::tick, 1, 1, TimeUnit.SECONDS);
     }
 
@@ -84,10 +94,11 @@ public class PaymentSimulator {
         running.set(true);
 
         log.info(
-                "Payment simulator started at {} payment(s)/sec [accounts={}, merchants={}]",
+                "Payment initiator started at {} payment(s)/sec [accounts={}, merchants={}, processorBaseUrl={}]",
                 ratePerSecond.get(),
                 ignite.cache(CacheNames.ACCOUNTS).sizeLong(),
-                ignite.cache(CacheNames.MERCHANTS).sizeLong()
+                ignite.cache(CacheNames.MERCHANTS).sizeLong(),
+                processorBaseUrl
         );
     }
 
@@ -126,7 +137,7 @@ public class PaymentSimulator {
 
         if (simulatedRequest == null) {
             if (missingSeedDataWarningLogged.compareAndSet(false, true)) {
-                log.warn("Payment simulator could not build a request from the available account and merchant data.");
+                log.warn("Payment initiator could not build a request from the available account and merchant data.");
             }
             return;
         }
@@ -134,20 +145,18 @@ public class PaymentSimulator {
         String paymentId = "PAY-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
         generatedPayments.incrementAndGet();
 
-        PaymentOperationResult result;
+        PaymentResponse response;
         try {
-            result = paymentService.authorize(
-                    new AuthorizePaymentRequest(
-                            paymentId,
-                            simulatedRequest.account().getAccountId(),
-                            simulatedRequest.merchant().getMerchantId(),
-                            simulatedRequest.amountMinor(),
-                            simulatedRequest.currency()
-                    )
-            );
+            response = authorize(new AuthorizePaymentRequest(
+                    paymentId,
+                    simulatedRequest.account().getAccountId(),
+                    simulatedRequest.merchant().getMerchantId(),
+                    simulatedRequest.amountMinor(),
+                    simulatedRequest.currency()
+            ));
         } catch (RuntimeException e) {
             log.warn(
-                    "Payment simulator authorization failed [paymentId={}, accountId={}, merchantId={}, amountMinor={}, currency={}]",
+                    "Payment initiator authorization failed [paymentId={}, accountId={}, merchantId={}, amountMinor={}, currency={}]",
                     paymentId,
                     simulatedRequest.account().getAccountId(),
                     simulatedRequest.merchant().getMerchantId(),
@@ -158,12 +167,12 @@ public class PaymentSimulator {
             return;
         }
 
-        if (result.payment().getStatus() == PaymentStatus.PENDING_MERCHANT) {
+        if (response.status() == PaymentStatus.PENDING_MERCHANT) {
             pendingMerchantPayments.put(paymentId, Instant.now().toEpochMilli());
             return;
         }
 
-        if (result.payment().getStatus() == PaymentStatus.AUTHORIZED && ThreadLocalRandom.current().nextDouble() < 0.84) {
+        if (response.status() == PaymentStatus.AUTHORIZED && ThreadLocalRandom.current().nextDouble() < 0.84) {
             delayedExecutor.schedule(() -> captureThenMaybeRefund(paymentId), randomDelay(200, 1_200), TimeUnit.MILLISECONDS);
         }
     }
@@ -201,13 +210,37 @@ public class PaymentSimulator {
 
     private void captureThenMaybeRefund(String paymentId) {
         try {
-            PaymentOperationResult capture = paymentService.capture(paymentId);
-            if (capture.payment().getStatus() == PaymentStatus.CAPTURED && ThreadLocalRandom.current().nextDouble() < 0.07) {
-                delayedExecutor.schedule(() -> paymentService.refund(paymentId), randomDelay(1_500, 6_000), TimeUnit.MILLISECONDS);
+            PaymentResponse capture = post(
+                    processorBaseUrl + "/api/payments/" + paymentId + "/capture",
+                    "",
+                    PaymentResponse.class
+            );
+            if (capture.status() == PaymentStatus.CAPTURED && ThreadLocalRandom.current().nextDouble() < 0.07) {
+                delayedExecutor.schedule(() -> refund(paymentId), randomDelay(1_500, 6_000), TimeUnit.MILLISECONDS);
             }
         } catch (Exception ignored) {
             // Simulator traffic is best-effort and should not halt on race conditions.
         }
+    }
+
+    private void refund(String paymentId) {
+        try {
+            post(
+                    processorBaseUrl + "/api/payments/" + paymentId + "/refund",
+                    "",
+                    PaymentResponse.class
+            );
+        } catch (Exception ignored) {
+            // Simulator traffic is best-effort and should not halt on race conditions.
+        }
+    }
+
+    private PaymentResponse authorize(AuthorizePaymentRequest request) {
+        return post(
+                processorBaseUrl + "/api/payments/authorize",
+                serialize(request),
+                PaymentResponse.class
+        );
     }
 
     private long randomDelay(int minInclusive, int maxExclusive) {
@@ -346,6 +379,36 @@ public class PaymentSimulator {
             case "EUR" -> "USD";
             default -> "GBP";
         };
+    }
+
+    private String serialize(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize payment initiator request", e);
+        }
+    }
+
+    private <T> T post(String url, String body, Class<T> responseType) {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body));
+
+        try {
+            HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException("Processor request failed with status " + response.statusCode() + ": " + response.body());
+            }
+            if (responseType == String.class) {
+                return responseType.cast(response.body());
+            }
+            return objectMapper.readValue(response.body(), responseType);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to call payment processor", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while calling payment processor", e);
+        }
     }
 
     private record SimulatedRequest(Account account, Merchant merchant, long amountMinor, String currency) {

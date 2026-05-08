@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/payments")
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class PaymentController {
 
     private final PaymentService paymentService;

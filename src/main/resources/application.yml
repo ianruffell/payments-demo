@@ -19,9 +19,12 @@ demo:
     merchant-service-url-pattern: http://merchant-%05d:8080/api/merchant/payments
   simulator:
     default-rate-per-second: 120
-    target-decline-rate: 0.05
+    target-decline-rate: 0.02
+  initiator:
+    base-url: http://payments-demo-initiator:8080
   fraud:
-    threshold: 72.0
+    threshold: 84.0
   processor:
+    base-url: http://payments-demo-app:8080
     callback-url: http://payments-demo-app:8080/api/merchant-results
     merchant-timeout-ms: 10000

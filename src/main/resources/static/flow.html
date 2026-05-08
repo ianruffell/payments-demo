@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Flow | GridGain Payments Demo</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="shell">
+    <section class="hero hero-split">
+        <div>
+            <p class="eyebrow">GridGain Payments Demo</p>
+            <h1>Transaction flow map</h1>
+            <p class="lede">
+                A live process view of where recent transactions are moving, stalling, or exiting.
+            </p>
+        </div>
+        <nav class="hero-actions">
+            <a class="nav-chip" href="/">Dashboard</a>
+            <a class="nav-chip active" href="/flow.html">Transaction Flow</a>
+        </nav>
+    </section>
+
+    <section class="stats-grid flow-stats-grid">
+        <article class="stat-card">
+            <span>Transactions / 5m</span>
+            <strong id="flowTotalTransactions">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>In Flight</span>
+            <strong id="flowInFlightTransactions">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Approval Rate / 5m</span>
+            <strong id="flowApprovalRate">0%</strong>
+        </article>
+        <article class="stat-card">
+            <span>Refresh Window</span>
+            <strong id="flowWindowLabel">0s</strong>
+        </article>
+    </section>
+
+    <section class="panel flow-panel">
+        <div class="section-header">
+            <h2>Live Transaction Journey</h2>
+            <span id="flowGeneratedAt" class="muted">Waiting for data...</span>
+        </div>
+        <div id="flowMap" class="flow-map"></div>
+    </section>
+
+    <section class="panel">
+        <div class="section-header">
+            <h2>How to Read It</h2>
+            <span class="muted">Counts update every second</span>
+        </div>
+        <p class="flow-explainer">
+            Each column is a stage in the authorization pipeline. The state rows show how many recent payments are currently
+            sitting in each outcome, while the animated connectors show how much traffic is moving forward between stages.
+        </p>
+    </section>
+</main>
+
+<script src="/flow.js"></script>
+</body>
+</html>

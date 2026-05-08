@@ -31,7 +31,7 @@ import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class PaymentService {
 
     private final Ignite ignite;

@@ -17,7 +17,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class SeedDataLoader implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SeedDataLoader.class);
@@ -40,19 +40,22 @@ public class SeedDataLoader implements ApplicationRunner {
     private final int accountCount;
     private final int merchantCount;
     private final String merchantServiceUrlPattern;
+    private final long merchantMinDailyLimitMinor;
 
     public SeedDataLoader(
             Ignite ignite,
             @Value("${demo.seed.enabled:true}") boolean enabled,
             @Value("${demo.seed.accounts:100000}") int accountCount,
             @Value("${demo.seed.merchants:4}") int merchantCount,
-            @Value("${demo.seed.merchant-service-url-pattern:http://merchant-%05d:8080/api/merchant/payments}") String merchantServiceUrlPattern
+            @Value("${demo.seed.merchant-service-url-pattern:http://merchant-%05d:8080/api/merchant/payments}") String merchantServiceUrlPattern,
+            @Value("${demo.seed.merchant-min-daily-limit-minor:10000000000}") long merchantMinDailyLimitMinor
     ) {
         this.ignite = ignite;
         this.enabled = enabled;
         this.accountCount = accountCount;
         this.merchantCount = merchantCount;
         this.merchantServiceUrlPattern = merchantServiceUrlPattern;
+        this.merchantMinDailyLimitMinor = merchantMinDailyLimitMinor;
     }
 
     @Override
@@ -85,6 +88,8 @@ public class SeedDataLoader implements ApplicationRunner {
         } else {
             log.info("Skipping merchant seed load because cache already contains {} entries.", merchantCacheSize);
         }
+
+        normalizeMerchantLimits();
     }
 
     private boolean seedDataReadable() {
@@ -180,6 +185,34 @@ public class SeedDataLoader implements ApplicationRunner {
         }
 
         log.info("Finished loading merchants.");
+    }
+
+    private void normalizeMerchantLimits() {
+        long updatedCount = 0;
+
+        for (int i = 1; i <= merchantCount; i++) {
+            String merchantId = "MER-%05d".formatted(i);
+            Merchant merchant = (Merchant) ignite.cache(CacheNames.MERCHANTS).get(merchantId);
+            if (merchant == null) {
+                continue;
+            }
+
+            if (merchant.getDailyLimitMinor() >= merchantMinDailyLimitMinor) {
+                continue;
+            }
+
+            merchant.setDailyLimitMinor(merchantMinDailyLimitMinor);
+            ignite.cache(CacheNames.MERCHANTS).put(merchantId, merchant);
+            updatedCount++;
+        }
+
+        if (updatedCount > 0) {
+            log.info(
+                    "Raised daily limits for {} merchant(s) to at least {} minor units.",
+                    updatedCount,
+                    merchantMinDailyLimitMinor
+            );
+        }
     }
 
     private RiskTier randomRiskTier() {

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/dashboard")
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class DashboardController {
 
     private final DashboardService dashboardService;

@@ -1,7 +1,7 @@
 package com.example.paymentsdemo.api;
 
 import com.example.paymentsdemo.dto.SimulatorStatusResponse;
-import com.example.paymentsdemo.service.SimulatorGatewayService;
+import com.example.paymentsdemo.simulator.PaymentSimulator;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,27 +11,33 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/simulator")
-@Profile("!merchant-simulator & !payment-initiator")
-public class SimulatorController {
+@Profile("payment-initiator")
+public class PaymentInitiatorController {
 
-    private final SimulatorGatewayService simulatorGatewayService;
+    private final PaymentSimulator paymentSimulator;
 
-    public SimulatorController(SimulatorGatewayService simulatorGatewayService) {
-        this.simulatorGatewayService = simulatorGatewayService;
+    public PaymentInitiatorController(PaymentSimulator paymentSimulator) {
+        this.paymentSimulator = paymentSimulator;
     }
 
     @PostMapping("/start")
     public SimulatorStatusResponse start(@RequestParam(defaultValue = "120") int ratePerSecond) {
-        return simulatorGatewayService.start(ratePerSecond);
+        paymentSimulator.start(ratePerSecond);
+        return status();
     }
 
     @PostMapping("/stop")
     public SimulatorStatusResponse stop() {
-        return simulatorGatewayService.stop();
+        paymentSimulator.stop();
+        return status();
     }
 
     @GetMapping
     public SimulatorStatusResponse status() {
-        return simulatorGatewayService.status();
+        return new SimulatorStatusResponse(
+                paymentSimulator.isRunning(),
+                paymentSimulator.getRatePerSecond(),
+                paymentSimulator.getGeneratedPayments()
+        );
     }
 }

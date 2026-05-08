@@ -8,7 +8,7 @@
 </head>
 <body>
 <main class="shell">
-    <section class="hero">
+    <section class="hero hero-split">
         <div>
             <p class="eyebrow">GridGain Payments Demo</p>
             <h1>Real-time card transactions on GridGain</h1>
@@ -16,6 +16,10 @@
                 Authorize, capture, and refund flows backed by GridGain caches, live SQL metrics, and a browser dashboard.
             </p>
         </div>
+        <nav class="hero-actions">
+            <a class="nav-chip active" href="/">Dashboard</a>
+            <a class="nav-chip" href="/flow.html">Transaction Flow</a>
+        </nav>
     </section>
 
     <section class="controls-grid">
@@ -33,9 +37,9 @@
         <article class="panel">
             <h2>Fraud Rule</h2>
             <label for="fraudThreshold">Fraud threshold</label>
-            <input id="fraudThreshold" type="range" min="40" max="95" step="1" value="72">
+            <input id="fraudThreshold" type="range" min="40" max="95" step="1" value="84">
             <div class="range-readout">
-                <span id="fraudThresholdValue">72</span>
+                <span id="fraudThresholdValue">84</span>
                 <button id="applyFraudThreshold">Apply</button>
             </div>
             <p class="muted">Lower values cause more declines immediately.</p>
@@ -68,7 +72,7 @@
         </article>
         <article class="stat-card">
             <span>Current Threshold</span>
-            <strong id="activeThreshold">72</strong>
+            <strong id="activeThreshold">84</strong>
         </article>
     </section>
 

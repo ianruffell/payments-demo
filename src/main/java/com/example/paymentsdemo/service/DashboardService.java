@@ -23,21 +23,21 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class DashboardService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
-    private final com.example.paymentsdemo.simulator.PaymentSimulator paymentSimulator;
+    private final SimulatorGatewayService simulatorGatewayService;
 
     public DashboardService(
             Ignite ignite,
             FraudService fraudService,
-            com.example.paymentsdemo.simulator.PaymentSimulator paymentSimulator
+            SimulatorGatewayService simulatorGatewayService
     ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
-        this.paymentSimulator = paymentSimulator;
+        this.simulatorGatewayService = simulatorGatewayService;
     }
 
     public DashboardSnapshot snapshot() {
@@ -89,11 +89,7 @@ public class DashboardService {
                 .toList();
 
         List<ThroughputPoint> throughputSeries = throughputSeries(recentPayments, now);
-        SimulatorStatusResponse simulatorStatus = new SimulatorStatusResponse(
-                paymentSimulator.isRunning(),
-                paymentSimulator.getRatePerSecond(),
-                paymentSimulator.getGeneratedPayments()
-        );
+        SimulatorStatusResponse simulatorStatus = simulatorGatewayService.status();
 
         return new DashboardSnapshot(
                 now,

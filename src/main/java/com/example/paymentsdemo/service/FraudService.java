@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator")
+@Profile("!merchant-simulator & !payment-initiator")
 public class FraudService {
 
     private static final Set<String> HIGH_RISK_CATEGORIES = Set.of("GAMBLING", "CRYPTO", "TRAVEL", "DIGITAL_GOODS");
@@ -19,7 +19,7 @@ public class FraudService {
 
     private final AtomicReference<Double> threshold;
 
-    public FraudService(@Value("${demo.fraud.threshold:72.0}") double threshold) {
+    public FraudService(@Value("${demo.fraud.threshold:84.0}") double threshold) {
         this.threshold = new AtomicReference<>(threshold);
     }
 
