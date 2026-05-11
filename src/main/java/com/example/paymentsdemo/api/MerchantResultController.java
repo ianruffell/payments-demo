@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/merchant-results")
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class MerchantResultController {
 
     private final PaymentService paymentService;

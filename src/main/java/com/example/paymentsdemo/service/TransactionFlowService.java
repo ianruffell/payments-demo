@@ -7,8 +7,10 @@ import com.example.paymentsdemo.dto.TransactionFlowStageState;
 import com.example.paymentsdemo.dto.TransactionFlowStep;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
@@ -16,23 +18,24 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class TransactionFlowService {
 
     private static final long WINDOW_SECONDS = 300L;
 
     private final Ignite ignite;
+    private final OracleSystemOfRecordRepository oracleRepository;
 
-    public TransactionFlowService(Ignite ignite) {
+    public TransactionFlowService(Ignite ignite, OracleSystemOfRecordRepository oracleRepository) {
         this.ignite = ignite;
+        this.oracleRepository = oracleRepository;
     }
 
     public TransactionFlowSnapshot snapshot() {
         long now = Instant.now().toEpochMilli();
         long windowStart = now - (WINDOW_SECONDS * 1_000L);
 
-        List<List<?>> payments = queryPayments(windowStart);
-        Set<String> attemptedPaymentIds = attemptedPaymentIds(windowStart);
+        List<PaymentHistoryRow> payments = recentPayments(windowStart);
 
         long totalTransactions = payments.size();
         long dispatchedToMerchant = 0L;
@@ -45,10 +48,9 @@ public class TransactionFlowService {
         long captured = 0L;
         long refunded = 0L;
 
-        for (List<?> row : payments) {
-            String paymentId = String.valueOf(row.get(0));
-            String status = String.valueOf(row.get(1));
-            boolean attempted = attemptedPaymentIds.contains(paymentId);
+        for (PaymentHistoryRow row : payments) {
+            String status = row.status().name();
+            boolean attempted = row.merchantAttempted();
 
             if (attempted) {
                 dispatchedToMerchant++;
@@ -142,27 +144,47 @@ public class TransactionFlowService {
         );
     }
 
-    private List<List<?>> queryPayments(long windowStart) {
-        return ignite.cache(CacheNames.PAYMENTS)
-                .query(new SqlFieldsQuery(
-                        "SELECT paymentId, status FROM Payment WHERE createdAtEpochMs >= ?"
-                ).setArgs(windowStart))
-                .getAll();
-    }
-
-    private Set<String> attemptedPaymentIds(long windowStart) {
-        List<List<?>> rows = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS)
+    private List<PaymentHistoryRow> recentPayments(long windowStart) {
+        List<List<?>> attemptRows = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS)
                 .query(new SqlFieldsQuery(
                         "SELECT paymentId FROM MerchantPaymentAttempt WHERE requestedAtEpochMs >= ?"
                 ).setArgs(windowStart))
                 .getAll();
 
-        List<String> paymentIds = new ArrayList<>(rows.size());
-        for (List<?> row : rows) {
+        Set<String> attempted = new HashSet<>(attemptRows.size());
+        for (List<?> row : attemptRows) {
             if (!row.isEmpty() && row.get(0) != null) {
-                paymentIds.add(String.valueOf(row.get(0)));
+                attempted.add(String.valueOf(row.get(0)));
             }
         }
-        return new HashSet<>(paymentIds);
+
+        Map<String, PaymentHistoryRow> payments = new LinkedHashMap<>();
+        List<List<?>> rows = ignite.cache(CacheNames.PAYMENTS)
+                .query(new SqlFieldsQuery(
+                        "SELECT paymentId, merchantId, amountMinor, status, declineReason, fraudScore, suspicious, createdAtEpochMs " +
+                                "FROM Payment WHERE createdAtEpochMs >= ?"
+                ).setArgs(windowStart))
+                .getAll();
+
+        for (List<?> row : rows) {
+            String paymentId = String.valueOf(row.get(0));
+            payments.put(paymentId, new PaymentHistoryRow(
+                    paymentId,
+                    String.valueOf(row.get(1)),
+                    ((Number) row.get(2)).longValue(),
+                    PaymentStatus.valueOf(String.valueOf(row.get(3))),
+                    row.get(4) == null ? null : String.valueOf(row.get(4)),
+                    ((Number) row.get(5)).doubleValue(),
+                    Boolean.TRUE.equals(row.get(6)),
+                    ((Number) row.get(7)).longValue(),
+                    attempted.contains(paymentId)
+            ));
+        }
+
+        for (PaymentHistoryRow row : oracleRepository.loadRecentArchivedPayments(windowStart)) {
+            payments.putIfAbsent(row.paymentId(), row);
+        }
+
+        return new ArrayList<>(payments.values());
     }
 }

@@ -62,7 +62,7 @@ public class PaymentSimulator {
             ObjectMapper objectMapper,
             @Value("${demo.processor.base-url:http://payments-demo-app:8080}") String processorBaseUrl,
             @Value("${demo.seed.accounts:100000}") int accountCount,
-            @Value("${demo.seed.merchants:10}") int merchantCount,
+            @Value("${demo.seed.merchants:5}") int merchantCount,
             @Value("${demo.simulator.default-rate-per-second:120}") int defaultRatePerSecond,
             @Value("${demo.simulator.target-decline-rate:0.02}") double targetDeclineRate
     ) {

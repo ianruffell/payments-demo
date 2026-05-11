@@ -31,12 +31,13 @@ import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class PaymentService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
     private final MerchantDispatchService merchantDispatchService;
+    private final OracleSystemOfRecordRepository oracleRepository;
     private final String processorCallbackUrl;
     private final long merchantTimeoutMs;
 
@@ -44,17 +45,24 @@ public class PaymentService {
             Ignite ignite,
             FraudService fraudService,
             MerchantDispatchService merchantDispatchService,
+            OracleSystemOfRecordRepository oracleRepository,
             @Value("${demo.processor.callback-url:http://payments-demo-app:8080/api/merchant-results}") String processorCallbackUrl,
             @Value("${demo.processor.merchant-timeout-ms:10000}") long merchantTimeoutMs
     ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
         this.merchantDispatchService = merchantDispatchService;
+        this.oracleRepository = oracleRepository;
         this.processorCallbackUrl = processorCallbackUrl;
         this.merchantTimeoutMs = merchantTimeoutMs;
     }
 
     public PaymentOperationResult authorize(AuthorizePaymentRequest request) {
+        Payment archived = oracleRepository.findArchivedPayment(request.paymentId());
+        if (archived != null) {
+            return new PaymentOperationResult(archived, "Duplicate payment id", true);
+        }
+
         IgniteCache<String, Payment> payments = ignite.cache(CacheNames.PAYMENTS);
         IgniteCache<String, Account> accounts = ignite.cache(CacheNames.ACCOUNTS);
         IgniteCache<String, Merchant> merchants = ignite.cache(CacheNames.MERCHANTS);
@@ -75,12 +83,12 @@ public class PaymentService {
                 return new PaymentOperationResult(existing, "Duplicate payment id", true);
             }
 
-            Account account = accounts.get(request.accountId());
+            Account account = loadAccount(accounts, request.accountId());
             if (account == null) {
                 throw new ResponseStatusException(NOT_FOUND, "Unknown accountId");
             }
 
-            Merchant merchant = merchants.get(request.merchantId());
+            Merchant merchant = loadMerchant(merchants, request.merchantId());
             if (merchant == null) {
                 throw new ResponseStatusException(NOT_FOUND, "Unknown merchantId");
             }
@@ -212,8 +220,8 @@ public class PaymentService {
                 return new PaymentOperationResult(payment, "Merchant declined payment", false);
             }
 
-            Account account = accounts.get(payment.getAccountId());
-            Merchant merchant = merchants.get(payment.getMerchantId());
+            Account account = loadAccount(accounts, payment.getAccountId());
+            Merchant merchant = loadMerchant(merchants, payment.getMerchantId());
             String declineReason = validateApprovedMerchantResponse(payment, account, merchant);
 
             if (declineReason != null) {
@@ -505,11 +513,38 @@ public class PaymentService {
 
         try (var cursor = ignite.cache(CacheNames.PAYMENTS).query(query)) {
             var row = cursor.getAll().stream().findFirst().orElse(null);
-            return row == null || row.isEmpty() || row.get(0) == null ? 0L : ((Number) row.get(0)).longValue();
+            long activeTotal = row == null || row.isEmpty() || row.get(0) == null ? 0L : ((Number) row.get(0)).longValue();
+            return activeTotal + oracleRepository.archivedMerchantDailyTotal(merchantId, startOfDay);
         }
     }
 
     private String normalizeReason(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private Account loadAccount(IgniteCache<String, Account> accounts, String accountId) {
+        Account account = accounts.get(accountId);
+        if (account != null) {
+            return account;
+        }
+
+        account = oracleRepository.findAccount(accountId);
+        if (account != null) {
+            accounts.put(accountId, account);
+        }
+        return account;
+    }
+
+    private Merchant loadMerchant(IgniteCache<String, Merchant> merchants, String merchantId) {
+        Merchant merchant = merchants.get(merchantId);
+        if (merchant != null) {
+            return merchant;
+        }
+
+        merchant = oracleRepository.findMerchant(merchantId);
+        if (merchant != null) {
+            merchants.put(merchantId, merchant);
+        }
+        return merchant;
     }
 }

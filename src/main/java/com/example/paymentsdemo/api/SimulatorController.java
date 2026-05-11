@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/simulator")
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class SimulatorController {
 
     private final SimulatorGatewayService simulatorGatewayService;

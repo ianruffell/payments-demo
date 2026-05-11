@@ -20,6 +20,80 @@ x-gridgain-def:
     - ./src/main/resources/ignite-config.xml:/opt/gridgain/etc/ignite-config.xml
 
 services:
+  oracle-db:
+    image: gvenzl/oracle-free:23.26.0-slim-faststart
+    environment:
+      ORACLE_PASSWORD: oracle
+      APP_USER: PAYMENTS_APP
+      APP_USER_PASSWORD: payments_app
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./oracle/init:/container-entrypoint-initdb.d:ro
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: on-failure
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "29092:29092"
+    restart: on-failure
+
+  debezium-connect:
+    build:
+      context: ./debezium-connect
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - oracle-db
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    ports:
+      - "8083:8083"
+    restart: on-failure
+
+  debezium-register-oracle:
+    image: curlimages/curl:8.8.0
+    depends_on:
+      - debezium-connect
+      - oracle-db
+      - payments-demo-app
+    command: ["/bin/sh", "/scripts/register-oracle-connector.sh"]
+    restart: on-failure
+    volumes:
+      - ./oracle/register-oracle-connector.sh:/scripts/register-oracle-connector.sh:ro
+      - ./oracle/oracle-source-connector.json:/config/oracle-source-connector.json:ro
+
   gg8-node1:
     << : *gridgain-def
     ports:
@@ -59,6 +133,20 @@ services:
     ports:
       # HOST:CONTAINER
       - "8008:8008"
+
+  control-center-bootstrap:
+    image: gridgain/ultimate:8.9.32
+    depends_on:
+      - gg8-node1
+      - control-center-backend
+    command: ["/bin/sh", "/scripts/register-control-center.sh"]
+    restart: on-failure
+    environment:
+      GRIDGAIN_MANAGEMENT_HOST: gg8-node1
+      GRIDGAIN_MANAGEMENT_PORT: 11211
+      GRIDGAIN_CONTROL_CENTER_URI: http://control-center-backend:3000
+    volumes:
+      - ./gridgain/register-control-center.sh:/scripts/register-control-center.sh:ro
 
   merchant-00001:
     build:
@@ -150,101 +238,13 @@ services:
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 950000
     restart: on-failure
 
-  merchant-00006:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: merchant-simulator
-      DEMO_MERCHANT_ID: MER-00006
-      DEMO_MERCHANT_NAME: Merchant 00006
-      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
-      DEMO_MERCHANT_MIN_DELAY_MS: 1550
-      DEMO_MERCHANT_MAX_DELAY_MS: 6000
-      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12100
-      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14600
-      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.055
-      DEMO_MERCHANT_APPROVAL_RATE: 0.945
-      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 900000
-    restart: on-failure
-
-  merchant-00007:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: merchant-simulator
-      DEMO_MERCHANT_ID: MER-00007
-      DEMO_MERCHANT_NAME: Merchant 00007
-      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
-      DEMO_MERCHANT_MIN_DELAY_MS: 1650
-      DEMO_MERCHANT_MAX_DELAY_MS: 6400
-      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12200
-      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 14800
-      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.06
-      DEMO_MERCHANT_APPROVAL_RATE: 0.94
-      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 850000
-    restart: on-failure
-
-  merchant-00008:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: merchant-simulator
-      DEMO_MERCHANT_ID: MER-00008
-      DEMO_MERCHANT_NAME: Merchant 00008
-      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
-      DEMO_MERCHANT_MIN_DELAY_MS: 1750
-      DEMO_MERCHANT_MAX_DELAY_MS: 6800
-      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12300
-      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15000
-      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.065
-      DEMO_MERCHANT_APPROVAL_RATE: 0.935
-      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 800000
-    restart: on-failure
-
-  merchant-00009:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: merchant-simulator
-      DEMO_MERCHANT_ID: MER-00009
-      DEMO_MERCHANT_NAME: Merchant 00009
-      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
-      DEMO_MERCHANT_MIN_DELAY_MS: 1850
-      DEMO_MERCHANT_MAX_DELAY_MS: 7200
-      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12400
-      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15200
-      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.07
-      DEMO_MERCHANT_APPROVAL_RATE: 0.93
-      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 750000
-    restart: on-failure
-
-  merchant-00010:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      SPRING_PROFILES_ACTIVE: merchant-simulator
-      DEMO_MERCHANT_ID: MER-00010
-      DEMO_MERCHANT_NAME: Merchant 00010
-      DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
-      DEMO_MERCHANT_MIN_DELAY_MS: 1950
-      DEMO_MERCHANT_MAX_DELAY_MS: 7600
-      DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS: 12500
-      DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS: 15400
-      DEMO_MERCHANT_TIMEOUT_PROBABILITY: 0.075
-      DEMO_MERCHANT_APPROVAL_RATE: 0.925
-      DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 700000
-    restart: on-failure
-
   payments-demo-initiator:
     build:
       context: .
       dockerfile: Dockerfile
     depends_on:
+      - oracle-db
+      - kafka
       - gg8-node1
       - gg8-node2
       - gg8-node3
@@ -253,17 +253,15 @@ services:
       - merchant-00003
       - merchant-00004
       - merchant-00005
-      - merchant-00006
-      - merchant-00007
-      - merchant-00008
-      - merchant-00009
-      - merchant-00010
       - payments-demo-app
     environment:
       SPRING_PROFILES_ACTIVE: payment-initiator
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
       DEMO_PROCESSOR_BASE_URL: http://payments-demo-app:8080
+      DEMO_ORACLE_JDBC_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DEMO_ORACLE_USERNAME: PAYMENTS_APP
+      DEMO_ORACLE_PASSWORD: payments_app
     restart: on-failure
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
@@ -273,6 +271,8 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
+      - oracle-db
+      - kafka
       - gg8-node1
       - gg8-node2
       - gg8-node3
@@ -281,17 +281,37 @@ services:
       - merchant-00003
       - merchant-00004
       - merchant-00005
-      - merchant-00006
-      - merchant-00007
-      - merchant-00008
-      - merchant-00009
-      - merchant-00010
     environment:
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
+      DEMO_ORACLE_JDBC_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+      DEMO_ORACLE_USERNAME: PAYMENTS_APP
+      DEMO_ORACLE_PASSWORD: payments_app
+      DEMO_ORACLE_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "8080:8080"
     restart: on-failure
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
-  
+
+  payments-oracle-cache-sink:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - gg8-node1
+      - gg8-node2
+      - gg8-node3
+      - debezium-register-oracle
+    environment:
+      SPRING_PROFILES_ACTIVE: oracle-cache-sink
+      DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
+      DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
+      DEMO_ORACLE_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    restart: on-failure
+    volumes:
+      - ./gridgain-license.xml:/app/gridgain-license.xml:ro
+
+volumes:
+  oracle-data:

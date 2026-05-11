@@ -15,8 +15,23 @@ demo:
   seed:
     enabled: true
     accounts: 100000
-    merchants: 10
+    merchants: 5
     merchant-service-url-pattern: http://merchant-%05d:8080/api/merchant/payments
+  oracle:
+    jdbc-url: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
+    username: PAYMENTS_APP
+    password: payments_app
+    archive:
+      poll-interval-ms: 1000
+      captured-retention-ms: 15000
+    cdc:
+      kafka-bootstrap-servers: kafka:9092
+      sink-group-id: payments-oracle-cache-sink
+      topic-prefix: paymentsdemo
+      schema-name: PAYMENTS_APP
+      connector-name: paymentsdemo-oracle-reference
+      accounts-topic: ACCOUNTS
+      merchants-topic: MERCHANTS
   simulator:
     default-rate-per-second: 120
     target-decline-rate: 0.02

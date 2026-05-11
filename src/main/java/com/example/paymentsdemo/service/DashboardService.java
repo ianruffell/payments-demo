@@ -23,21 +23,24 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class DashboardService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
     private final SimulatorGatewayService simulatorGatewayService;
+    private final OracleSystemOfRecordRepository oracleRepository;
 
     public DashboardService(
             Ignite ignite,
             FraudService fraudService,
-            SimulatorGatewayService simulatorGatewayService
+            SimulatorGatewayService simulatorGatewayService,
+            OracleSystemOfRecordRepository oracleRepository
     ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
         this.simulatorGatewayService = simulatorGatewayService;
+        this.oracleRepository = oracleRepository;
     }
 
     public DashboardSnapshot snapshot() {
@@ -45,14 +48,10 @@ public class DashboardService {
         long lastMinute = now - 60_000L;
         long lastFiveMinutes = now - 300_000L;
 
-        List<List<?>> recentPayments = query(
-                "SELECT paymentId, merchantId, amountMinor, status, declineReason, fraudScore, suspicious, createdAtEpochMs " +
-                        "FROM Payment WHERE createdAtEpochMs >= ?",
-                lastFiveMinutes
-        );
+        List<PaymentHistoryRow> recentPayments = recentPayments(lastFiveMinutes);
 
         Map<String, Long> statusCounts = recentPayments.stream()
-                .collect(Collectors.groupingBy(row -> String.valueOf(row.get(3)), Collectors.counting()));
+                .collect(Collectors.groupingBy(row -> row.status().name(), Collectors.counting()));
 
         long approved = statusCounts.getOrDefault(PaymentStatus.AUTHORIZED.name(), 0L)
                 + statusCounts.getOrDefault(PaymentStatus.CAPTURED.name(), 0L)
@@ -61,12 +60,12 @@ public class DashboardService {
         double approvalRate = total == 0 ? 0.0 : (approved * 100.0) / total;
 
         long throughputLastMinute = recentPayments.stream()
-                .filter(row -> ((Number) row.get(7)).longValue() >= lastMinute)
+                .filter(row -> row.createdAtEpochMs() >= lastMinute)
                 .count();
 
         List<DeclineReasonCount> declines = recentPayments.stream()
-                .filter(row -> PaymentStatus.DECLINED.name().equals(String.valueOf(row.get(3))))
-                .collect(Collectors.groupingBy(row -> String.valueOf(row.get(4)), Collectors.counting()))
+                .filter(row -> row.status() == PaymentStatus.DECLINED)
+                .collect(Collectors.groupingBy(PaymentHistoryRow::declineReason, Collectors.counting()))
                 .entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .map(entry -> new DeclineReasonCount(entry.getKey(), entry.getValue()))
@@ -74,17 +73,17 @@ public class DashboardService {
 
         List<MerchantVolume> topMerchants = topMerchants(recentPayments);
         List<RecentSuspiciousPayment> suspiciousPayments = recentPayments.stream()
-                .filter(row -> Boolean.TRUE.equals(row.get(6)))
-                .filter(row -> !PaymentStatus.PENDING_MERCHANT.name().equals(String.valueOf(row.get(3))))
-                .sorted(Comparator.comparingLong((List<?> row) -> ((Number) row.get(7)).longValue()).reversed())
+                .filter(PaymentHistoryRow::suspicious)
+                .filter(row -> row.status() != PaymentStatus.PENDING_MERCHANT)
+                .sorted(Comparator.comparingLong(PaymentHistoryRow::createdAtEpochMs).reversed())
                 .limit(10)
                 .map(row -> new RecentSuspiciousPayment(
-                        String.valueOf(row.get(0)),
-                        String.valueOf(row.get(1)),
-                        ((Number) row.get(2)).longValue(),
-                        ((Number) row.get(5)).doubleValue(),
-                        PaymentStatus.valueOf(String.valueOf(row.get(3))),
-                        ((Number) row.get(7)).longValue()
+                        row.paymentId(),
+                        row.merchantId(),
+                        row.amountMinor(),
+                        row.fraudScore(),
+                        row.status(),
+                        row.createdAtEpochMs()
                 ))
                 .toList();
 
@@ -105,13 +104,13 @@ public class DashboardService {
         );
     }
 
-    private List<MerchantVolume> topMerchants(List<List<?>> payments) {
+    private List<MerchantVolume> topMerchants(List<PaymentHistoryRow> payments) {
         Map<String, MerchantAccumulator> accumulators = new HashMap<>();
-        for (List<?> row : payments) {
-            String merchantId = String.valueOf(row.get(1));
+        for (PaymentHistoryRow row : payments) {
+            String merchantId = row.merchantId();
             MerchantAccumulator accumulator = accumulators.computeIfAbsent(merchantId, ignored -> new MerchantAccumulator());
             accumulator.count++;
-            accumulator.amountMinor += ((Number) row.get(2)).longValue();
+            accumulator.amountMinor += row.amountMinor();
         }
 
         return accumulators.entrySet().stream()
@@ -135,15 +134,15 @@ public class DashboardService {
                 .toList();
     }
 
-    private List<ThroughputPoint> throughputSeries(List<List<?>> payments, long now) {
+    private List<ThroughputPoint> throughputSeries(List<PaymentHistoryRow> payments, long now) {
         long currentSecond = now / 1_000L;
         Map<Long, Long> buckets = new LinkedHashMap<>();
         for (long second = currentSecond - 59; second <= currentSecond; second++) {
             buckets.put(second, 0L);
         }
 
-        for (List<?> row : payments) {
-            long second = ((Number) row.get(7)).longValue() / 1_000L;
+        for (PaymentHistoryRow row : payments) {
+            long second = row.createdAtEpochMs() / 1_000L;
             buckets.computeIfPresent(second, (ignored, count) -> count + 1L);
         }
 
@@ -152,10 +151,43 @@ public class DashboardService {
         return points;
     }
 
-    private List<List<?>> query(String sql, Object... args) {
-        return ignite.cache(CacheNames.PAYMENTS)
-                .query(new SqlFieldsQuery(sql).setArgs(args))
-                .getAll();
+    private List<PaymentHistoryRow> recentPayments(long windowStart) {
+        Map<String, Boolean> attempted = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS)
+                .query(new SqlFieldsQuery(
+                        "SELECT paymentId FROM MerchantPaymentAttempt WHERE requestedAtEpochMs >= ?"
+                ).setArgs(windowStart))
+                .getAll()
+                .stream()
+                .filter(row -> !row.isEmpty() && row.get(0) != null)
+                .collect(Collectors.toMap(row -> String.valueOf(row.get(0)), row -> true, (left, ignored) -> left));
+
+        Map<String, PaymentHistoryRow> payments = ignite.cache(CacheNames.PAYMENTS)
+                .query(new SqlFieldsQuery(
+                        "SELECT paymentId, merchantId, amountMinor, status, declineReason, fraudScore, suspicious, createdAtEpochMs " +
+                                "FROM Payment WHERE createdAtEpochMs >= ?"
+                ).setArgs(windowStart))
+                .getAll()
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> String.valueOf(row.get(0)),
+                        row -> new PaymentHistoryRow(
+                                String.valueOf(row.get(0)),
+                                String.valueOf(row.get(1)),
+                                ((Number) row.get(2)).longValue(),
+                                PaymentStatus.valueOf(String.valueOf(row.get(3))),
+                                row.get(4) == null ? null : String.valueOf(row.get(4)),
+                                ((Number) row.get(5)).doubleValue(),
+                                Boolean.TRUE.equals(row.get(6)),
+                                ((Number) row.get(7)).longValue(),
+                                attempted.containsKey(String.valueOf(row.get(0)))
+                        )
+                ));
+
+        for (PaymentHistoryRow row : oracleRepository.loadRecentArchivedPayments(windowStart)) {
+            payments.putIfAbsent(row.paymentId(), row);
+        }
+
+        return new ArrayList<>(payments.values());
     }
 
     private static class MerchantAccumulator {

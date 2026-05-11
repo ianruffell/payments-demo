@@ -1,6 +1,6 @@
 # GridGain Payments Demo
 
-Small real-time card-transaction demo built with Java, Spring Boot, an external GridGain cluster, and a browser dashboard.
+Small real-time card-transaction demo built with Java, Spring Boot, Oracle, Debezium, GridGain, and a browser dashboard.
 
 ## What it models
 
@@ -11,16 +11,35 @@ Small real-time card-transaction demo built with Java, Spring Boot, an external 
 
 ## What it shows
 
-1. Connect to an external GridGain cluster and load `100k` accounts and `10k` merchants on startup when the caches are empty.
-2. Start a simulator to generate authorize traffic, automatic captures, and occasional refunds.
-3. Watch live throughput, approval rate, declines by reason, top merchants, and suspicious payments at `http://localhost:8080`.
-4. Trigger a merchant outage or lower the fraud threshold from the dashboard and watch the metrics change immediately.
-
-## Version note
-
-The build is pinned to `GridGain 8.9.30`. The public GridGain Maven repository lists `8.9.30` published on `2026-02-17`, but I could not verify a public `8.9.32` artifact. If you have an internal repository with `8.9.32`, update `gridgain.version` in [pom.xml](/Users/iruffell/workspace/payments-demo/pom.xml).
+1. Treat Oracle as the system of record for reference data and completed payments.
+2. Use Debezium to project Oracle `accounts` and `merchants` changes into GridGain, which acts as the live cache for in-flight transactions.
+3. Keep active payments in GridGain while they are moving through auth, merchant review, capture, and refund handling.
+4. Archive terminal payments back to Oracle asynchronously, then evict them from GridGain once the Oracle write succeeds.
+5. Load `100k` accounts and `10` merchants on startup when the stores are empty.
+6. Start a simulator to generate authorize traffic, automatic captures, and occasional refunds.
+7. Watch live throughput, approval rate, declines by reason, top merchants, and suspicious payments at `http://localhost:8080`.
+8. Trigger a merchant outage or lower the fraud threshold from the dashboard and watch the metrics change immediately.
 
 ## Run
+
+The simplest local stack is Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+That starts:
+
+- Oracle Free on `localhost:1521` with `FREEPDB1`
+- Kafka and Kafka Connect with the Debezium Oracle connector
+- A three-node GridGain cluster
+- The Spring Boot processor on `http://localhost:8080`
+- Ten merchant simulator containers
+- The payment initiator and the Oracle-to-GridGain CDC sink
+
+Then open `http://localhost:8080` or `http://localhost:8080/flow.html`.
+
+## Run Without Compose
 
 GridGain 8 on Java 11+ requires several JVM `--add-opens` flags. Start your GridGain cluster first, then run the app with the cluster discovery addresses configured in [application.yml](/Users/iruffell/workspace/payments-demo/src/main/resources/application.yml) or via Spring properties:
 
@@ -31,7 +50,11 @@ export DEMO_GRIDGAIN_DISCOVERY_ADDRESSES_1=10.0.0.12:47500..47509
 mvn spring-boot:run
 ```
 
-Then open `http://localhost:8080`.
+For a full local Oracle/Debezium stack in this mode, you also need:
+
+- Oracle reachable at `jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1`
+- Kafka reachable at `kafka:9092`
+- A Kafka Connect worker with the Debezium Oracle connector and `ojdbc11.jar`
 
 ## Main APIs
 

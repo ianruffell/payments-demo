@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class FraudService {
 
     private static final Set<String> HIGH_RISK_CATEGORIES = Set.of("GAMBLING", "CRYPTO", "TRAVEL", "DIGITAL_GOODS");

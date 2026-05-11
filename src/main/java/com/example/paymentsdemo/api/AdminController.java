@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Profile;
 
 @RestController
 @RequestMapping("/api/admin")
-@Profile("!merchant-simulator & !payment-initiator")
+@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
 public class AdminController {
 
     private final MerchantAdminService merchantAdminService;
