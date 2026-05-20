@@ -131,6 +131,10 @@ public class PaymentSimulator {
     }
 
     private void generatePayment() {
+        if (!running.get()) {
+            return;
+        }
+
         SimulatedRequest simulatedRequest = ThreadLocalRandom.current().nextDouble() < targetDeclineRate
                 ? buildDeclinedRequest()
                 : buildApprovedRequest();

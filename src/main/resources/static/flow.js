@@ -50,6 +50,7 @@ function createStep(step) {
   const card = document.createElement("article");
   card.className = "flow-step";
 
+  const throughputSeries = step.throughputSeries || [];
   const states = step.states
     .map(
       (flowState) => `
@@ -60,16 +61,59 @@ function createStep(step) {
     )
     .join("");
 
+  const latestThroughput = throughputSeries.length
+    ? throughputSeries[throughputSeries.length - 1].count
+    : 0;
+  const settlementThroughput = throughputSeries.length
+    ? throughputSeries.reduce((sum, point) => sum + point.count, 0) / throughputSeries.length
+    : 0;
+  const throughputLabel = step.id === "settlement" ? "Settlement throughput" : "Stage throughput";
+  const throughputValue = step.id === "settlement" ? settlementThroughput : latestThroughput;
+  const throughputUnit = "tx/s";
+  const throughputText =
+    step.id === "settlement"
+      ? `${Math.round(throughputValue)} ${throughputUnit}`
+      : `${number(throughputValue)} ${throughputUnit}`;
+  const maxThroughput = Math.max(1, ...throughputSeries.map((point) => point.count));
+  const linePath = seriesLinePath(throughputSeries, maxThroughput, 220, 92, 8);
+  const areaPath = `${linePath} L 212 84 L 8 84 Z`;
+
   card.innerHTML = `
     <div class="flow-step__header">
       <span class="flow-step__index">${step.title}</span>
       <strong class="flow-step__total">${number(step.total)}</strong>
+    </div>
+    <div class="flow-step__throughput">
+      <div class="flow-step__throughput-meta">
+        <span>${throughputLabel}</span>
+        <strong>${throughputText}</strong>
+      </div>
+      <svg class="flow-step__throughput-chart" viewBox="0 0 220 92" role="img" aria-label="${step.title} throughput line chart">
+        <path class="flow-step__throughput-area" d="${areaPath}"></path>
+        <path class="flow-step__throughput-line" d="${linePath}"></path>
+      </svg>
     </div>
     <p class="flow-step__description">${step.description}</p>
     <div class="flow-step__states">${states}</div>
   `;
 
   return card;
+}
+
+function seriesLinePath(points, maxValue, width, height, inset) {
+  if (!points.length) {
+    return `M ${inset} ${height - inset} L ${width - inset} ${height - inset}`;
+  }
+
+  const usableWidth = width - inset * 2;
+  const usableHeight = height - inset * 2;
+  return points
+    .map((point, index) => {
+      const x = inset + (usableWidth * index) / Math.max(1, points.length - 1);
+      const y = inset + usableHeight - (point.count / maxValue) * usableHeight;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
 }
 
 function createConnection(connection) {

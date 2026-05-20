@@ -1,5 +1,8 @@
 target/
 ignite/
+BOOT-INF/
+superset/
+screenshot.png
 .classpath
 .project
 .settings/

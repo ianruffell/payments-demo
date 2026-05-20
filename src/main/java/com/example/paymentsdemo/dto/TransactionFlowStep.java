@@ -7,6 +7,7 @@ public record TransactionFlowStep(
         String title,
         String description,
         long total,
-        List<TransactionFlowStageState> states
+        List<TransactionFlowStageState> states,
+        List<ThroughputPoint> throughputSeries
 ) {
 }

@@ -296,12 +296,13 @@ pre {
 .flow-map {
     display: grid;
     grid-template-columns: minmax(220px, 1fr) 84px minmax(220px, 1fr) 84px minmax(220px, 1fr) 84px minmax(220px, 1fr);
-    align-items: center;
+    align-items: start;
     gap: 12px;
     padding-top: 10px;
 }
 
 .flow-step {
+    align-self: start;
     position: relative;
     padding: 18px;
     border-radius: 22px;
@@ -347,6 +348,49 @@ pre {
     margin-bottom: 16px;
 }
 
+.flow-step__throughput {
+    display: grid;
+    gap: 8px;
+    margin: 2px 0 16px;
+}
+
+.flow-step__throughput-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.flow-step__throughput-meta strong {
+    color: var(--ink);
+    font-size: 0.98rem;
+}
+
+.flow-step__throughput-chart {
+    width: 100%;
+    height: 92px;
+    display: block;
+    border-radius: 18px;
+    border: 1px solid rgba(12, 124, 89, 0.12);
+    background:
+        linear-gradient(180deg, rgba(12, 124, 89, 0.08), rgba(12, 124, 89, 0.03)),
+        rgba(255, 255, 255, 0.7);
+}
+
+.flow-step__throughput-area {
+    fill: rgba(12, 124, 89, 0.12);
+}
+
+.flow-step__throughput-line {
+    fill: none;
+    stroke: var(--brand);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .flow-step__states {
     display: grid;
     gap: 10px;
@@ -379,9 +423,11 @@ pre {
 }
 
 .flow-connector {
+    align-self: start;
     display: grid;
     gap: 12px;
     align-items: center;
+    padding-top: 12px;
 }
 
 .flow-connector__meta {

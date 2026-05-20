@@ -1,6 +1,7 @@
 package com.example.paymentsdemo.service;
 
 import com.example.paymentsdemo.domain.PaymentStatus;
+import com.example.paymentsdemo.dto.ThroughputPoint;
 import com.example.paymentsdemo.dto.TransactionFlowConnection;
 import com.example.paymentsdemo.dto.TransactionFlowSnapshot;
 import com.example.paymentsdemo.dto.TransactionFlowStageState;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.springframework.context.annotation.Profile;
@@ -22,6 +24,7 @@ import org.springframework.stereotype.Service;
 public class TransactionFlowService {
 
     private static final long WINDOW_SECONDS = 300L;
+    private static final long THROUGHPUT_WINDOW_SECONDS = 60L;
 
     private final Ignite ignite;
     private final OracleSystemOfRecordRepository oracleRepository;
@@ -90,7 +93,8 @@ public class TransactionFlowService {
                         totalTransactions,
                         List.of(
                                 new TransactionFlowStageState("Created", totalTransactions, "brand")
-                        )
+                        ),
+                        throughputSeries(payments, now, row -> true)
                 ),
                 new TransactionFlowStep(
                         "screening",
@@ -100,7 +104,8 @@ public class TransactionFlowService {
                         List.of(
                                 new TransactionFlowStageState("Sent to merchant", dispatchedToMerchant, "brand"),
                                 new TransactionFlowStageState("Declined before merchant", validationDeclined, "warning")
-                        )
+                        ),
+                        throughputSeries(payments, now, row -> true)
                 ),
                 new TransactionFlowStep(
                         "merchant",
@@ -112,7 +117,8 @@ public class TransactionFlowService {
                                 new TransactionFlowStageState("Approved path", approvedPath, "success"),
                                 new TransactionFlowStageState("Declined", merchantDeclined, "warning"),
                                 new TransactionFlowStageState("Timed out", timedOut, "danger")
-                        )
+                        ),
+                        throughputSeries(payments, now, PaymentHistoryRow::merchantAttempted)
                 ),
                 new TransactionFlowStep(
                         "settlement",
@@ -123,6 +129,13 @@ public class TransactionFlowService {
                                 new TransactionFlowStageState("Authorized", authorized, "success"),
                                 new TransactionFlowStageState("Captured", captured, "brand"),
                                 new TransactionFlowStageState("Refunded", refunded, "muted")
+                        ),
+                        throughputSeries(
+                                payments,
+                                now,
+                                row -> row.status() == PaymentStatus.AUTHORIZED
+                                        || row.status() == PaymentStatus.CAPTURED
+                                        || row.status() == PaymentStatus.REFUNDED
                         )
                 )
         );
@@ -186,5 +199,30 @@ public class TransactionFlowService {
         }
 
         return new ArrayList<>(payments.values());
+    }
+
+    private List<ThroughputPoint> throughputSeries(
+            List<PaymentHistoryRow> payments,
+            long now,
+            Predicate<PaymentHistoryRow> filter
+    ) {
+        long currentSecond = now / 1_000L;
+        Map<Long, Long> buckets = new LinkedHashMap<>();
+        for (long second = currentSecond - (THROUGHPUT_WINDOW_SECONDS - 1); second <= currentSecond; second++) {
+            buckets.put(second, 0L);
+        }
+
+        for (PaymentHistoryRow row : payments) {
+            if (!filter.test(row)) {
+                continue;
+            }
+
+            long second = row.createdAtEpochMs() / 1_000L;
+            buckets.computeIfPresent(second, (ignored, count) -> count + 1L);
+        }
+
+        List<ThroughputPoint> points = new ArrayList<>(buckets.size());
+        buckets.forEach((bucket, count) -> points.add(new ThroughputPoint(bucket, count)));
+        return points;
     }
 }
