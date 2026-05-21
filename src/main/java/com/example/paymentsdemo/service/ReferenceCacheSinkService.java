@@ -26,10 +26,10 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("oracle-cache-sink")
-public class OracleReferenceCacheSinkService {
+@Profile("reference-cache-sink | oracle-cache-sink")
+public class ReferenceCacheSinkService {
 
-    private static final Logger log = LoggerFactory.getLogger(OracleReferenceCacheSinkService.class);
+    private static final Logger log = LoggerFactory.getLogger(ReferenceCacheSinkService.class);
 
     private final Ignite ignite;
     private final ObjectMapper objectMapper;
@@ -42,15 +42,15 @@ public class OracleReferenceCacheSinkService {
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    public OracleReferenceCacheSinkService(
+    public ReferenceCacheSinkService(
             Ignite ignite,
             ObjectMapper objectMapper,
-            @Value("${demo.oracle.cdc.kafka-bootstrap-servers}") String bootstrapServers,
-            @Value("${demo.oracle.cdc.sink-group-id}") String groupId,
-            @Value("${demo.oracle.cdc.topic-prefix}") String topicPrefix,
-            @Value("${demo.oracle.cdc.schema-name}") String schemaName,
-            @Value("${demo.oracle.cdc.accounts-topic:ACCOUNTS}") String accountsTopicName,
-            @Value("${demo.oracle.cdc.merchants-topic:MERCHANTS}") String merchantsTopicName
+            @Value("${demo.external-db.cdc.kafka-bootstrap-servers}") String bootstrapServers,
+            @Value("${demo.external-db.cdc.sink-group-id}") String groupId,
+            @Value("${demo.external-db.cdc.topic-prefix}") String topicPrefix,
+            @Value("${demo.external-db.cdc.schema-name}") String schemaName,
+            @Value("${demo.external-db.cdc.accounts-topic:ACCOUNTS}") String accountsTopicName,
+            @Value("${demo.external-db.cdc.merchants-topic:MERCHANTS}") String merchantsTopicName
     ) {
         this.ignite = ignite;
         this.objectMapper = objectMapper;
@@ -87,7 +87,7 @@ public class OracleReferenceCacheSinkService {
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             consumer.subscribe(List.of(accountTopic, merchantTopic));
-            log.info("Oracle CDC cache sink subscribed to {}", List.of(accountTopic, merchantTopic));
+            log.info("External DB CDC cache sink subscribed to {}", List.of(accountTopic, merchantTopic));
 
             while (running.get()) {
                 for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofSeconds(1))) {
@@ -102,6 +102,10 @@ public class OracleReferenceCacheSinkService {
     }
 
     private void processRecord(ConsumerRecord<String, String> record) {
+        if (record.value() == null) {
+            return;
+        }
+
         try {
             JsonNode root = objectMapper.readTree(record.value());
             String op = root.path("op").asText();
@@ -117,7 +121,7 @@ public class OracleReferenceCacheSinkService {
                 applyMerchantChange(op, after, before);
             }
         } catch (Exception e) {
-            log.warn("Failed to apply Oracle CDC record from topic {}", record.topic(), e);
+            log.warn("Failed to apply External DB CDC record from topic {}", record.topic(), e);
         }
     }
 

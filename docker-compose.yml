@@ -22,6 +22,8 @@ x-gridgain-def:
 services:
   oracle-db:
     image: gvenzl/oracle-free:23.26.0-slim-faststart
+    profiles:
+      - oracle
     environment:
       ORACLE_PASSWORD: oracle
       APP_USER: PAYMENTS_APP
@@ -37,6 +39,32 @@ services:
     volumes:
       - oracle-data:/opt/oracle/oradata
       - ./oracle/init:/container-entrypoint-initdb.d:ro
+
+  mariadb:
+    image: mariadb:11.4
+    profiles:
+      - mariadb
+    command:
+      - --server-id=184054
+      - --log-bin=mariadb-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+    environment:
+      MARIADB_ROOT_PASSWORD: mariadb
+      MARIADB_DATABASE: payments_app
+      MARIADB_USER: payments_app
+      MARIADB_PASSWORD: payments_app
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./mariadb/init:/docker-entrypoint-initdb.d:ro
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
@@ -67,7 +95,6 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
-      - oracle-db
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: 1
@@ -84,6 +111,8 @@ services:
 
   debezium-register-oracle:
     image: curlimages/curl:8.8.0
+    profiles:
+      - oracle
     depends_on:
       - debezium-connect
       - oracle-db
@@ -93,6 +122,20 @@ services:
     volumes:
       - ./oracle/register-oracle-connector.sh:/scripts/register-oracle-connector.sh:ro
       - ./oracle/oracle-source-connector.json:/config/oracle-source-connector.json:ro
+
+  debezium-register-mariadb:
+    image: curlimages/curl:8.8.0
+    profiles:
+      - mariadb
+    depends_on:
+      - debezium-connect
+      - mariadb
+      - payments-demo-app
+    command: ["/bin/sh", "/scripts/register-mariadb-connector.sh"]
+    restart: on-failure
+    volumes:
+      - ./mariadb/register-mariadb-connector.sh:/scripts/register-mariadb-connector.sh:ro
+      - ./mariadb/mariadb-source-connector.json:/config/mariadb-source-connector.json:ro
 
   gg8-node1:
     << : *gridgain-def
@@ -122,6 +165,9 @@ services:
     environment:
       # Tune JVM options for Control Center if needed
       - JVM_OPTS=
+    ports:
+      # HOST:CONTAINER
+      - "3000:3000"
 
   control-center-frontend:
     image: gridgain/control-center-frontend:latest
@@ -243,7 +289,6 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - oracle-db
       - kafka
       - gg8-node1
       - gg8-node2
@@ -259,9 +304,6 @@ services:
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
       DEMO_PROCESSOR_BASE_URL: http://payments-demo-app:8080
-      DEMO_ORACLE_JDBC_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
-      DEMO_ORACLE_USERNAME: PAYMENTS_APP
-      DEMO_ORACLE_PASSWORD: payments_app
     restart: on-failure
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
@@ -271,7 +313,6 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
-      - oracle-db
       - kafka
       - gg8-node1
       - gg8-node2
@@ -284,20 +325,29 @@ services:
     environment:
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
-      DEMO_ORACLE_JDBC_URL: jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1
-      DEMO_ORACLE_USERNAME: PAYMENTS_APP
-      DEMO_ORACLE_PASSWORD: payments_app
-      DEMO_ORACLE_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DEMO_EXTERNAL_DB_TYPE: ${DEMO_EXTERNAL_DB_TYPE}
+      DEMO_EXTERNAL_DB_JDBC_URL: ${DEMO_EXTERNAL_DB_JDBC_URL}
+      DEMO_EXTERNAL_DB_USERNAME: ${DEMO_EXTERNAL_DB_USERNAME}
+      DEMO_EXTERNAL_DB_PASSWORD: ${DEMO_EXTERNAL_DB_PASSWORD}
+      DEMO_EXTERNAL_DB_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DEMO_EXTERNAL_DB_CDC_SINK_GROUP_ID: payments-reference-cache-sink
+      DEMO_EXTERNAL_DB_CDC_TOPIC_PREFIX: paymentsdemo
+      DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME: ${DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME}
+      DEMO_EXTERNAL_DB_CDC_CONNECTOR_NAME: ${DEMO_EXTERNAL_DB_CDC_CONNECTOR_NAME}
+      DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
+      DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
     ports:
       - "8080:8080"
     restart: on-failure
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
 
-  payments-oracle-cache-sink:
+  payments-reference-cache-sink-oracle:
     build:
       context: .
       dockerfile: Dockerfile
+    profiles:
+      - oracle
     depends_on:
       - kafka
       - gg8-node1
@@ -305,13 +355,45 @@ services:
       - gg8-node3
       - debezium-register-oracle
     environment:
-      SPRING_PROFILES_ACTIVE: oracle-cache-sink
+      SPRING_PROFILES_ACTIVE: reference-cache-sink
       DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
-      DEMO_ORACLE_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DEMO_EXTERNAL_DB_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DEMO_EXTERNAL_DB_CDC_SINK_GROUP_ID: payments-reference-cache-sink
+      DEMO_EXTERNAL_DB_CDC_TOPIC_PREFIX: paymentsdemo
+      DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME: ${DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME}
+      DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
+      DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
+    restart: on-failure
+    volumes:
+      - ./gridgain-license.xml:/app/gridgain-license.xml:ro
+
+  payments-reference-cache-sink-mariadb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles:
+      - mariadb
+    depends_on:
+      - kafka
+      - gg8-node1
+      - gg8-node2
+      - gg8-node3
+      - debezium-register-mariadb
+    environment:
+      SPRING_PROFILES_ACTIVE: reference-cache-sink
+      DEMO_GRIDGAIN_DISCOVERY_ADDRESSES: gg8-node1:47500..47509,gg8-node2:47500..47509,gg8-node3:47500..47509
+      DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
+      DEMO_EXTERNAL_DB_CDC_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DEMO_EXTERNAL_DB_CDC_SINK_GROUP_ID: payments-reference-cache-sink
+      DEMO_EXTERNAL_DB_CDC_TOPIC_PREFIX: paymentsdemo
+      DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME: ${DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME}
+      DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
+      DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
     restart: on-failure
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
 
 volumes:
   oracle-data:
+  mariadb-data:

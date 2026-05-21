@@ -26,25 +26,25 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class CompletedPaymentArchiveService {
 
     private static final Logger log = LoggerFactory.getLogger(CompletedPaymentArchiveService.class);
 
     private final Ignite ignite;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
     private final long pollIntervalMs;
     private final long capturedRetentionMs;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
 
     public CompletedPaymentArchiveService(
             Ignite ignite,
-            OracleSystemOfRecordRepository oracleRepository,
-            @Value("${demo.oracle.archive.poll-interval-ms:1000}") long pollIntervalMs,
-            @Value("${demo.oracle.archive.captured-retention-ms:15000}") long capturedRetentionMs
+            SystemOfRecordRepository systemOfRecordRepository,
+            @Value("${demo.external-db.archive.poll-interval-ms:1000}") long pollIntervalMs,
+            @Value("${demo.external-db.archive.captured-retention-ms:15000}") long capturedRetentionMs
     ) {
         this.ignite = ignite;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
         this.pollIntervalMs = pollIntervalMs;
         this.capturedRetentionMs = capturedRetentionMs;
     }
@@ -103,7 +103,7 @@ public class CompletedPaymentArchiveService {
 
         MerchantPaymentAttempt attempt = (MerchantPaymentAttempt) ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS).get(paymentId);
         List<LedgerEntry> ledgerEntries = loadLedgerEntries(paymentId);
-        if (!oracleRepository.archiveCompletedPayment(payment, attempt, ledgerEntries)) {
+        if (!systemOfRecordRepository.archiveCompletedPayment(payment, attempt, ledgerEntries)) {
             removeFromGridGain(paymentId);
             return;
         }

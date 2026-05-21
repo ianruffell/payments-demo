@@ -1,12 +1,11 @@
 package com.example.paymentsdemo.service;
 
+import com.example.paymentsdemo.config.ExternalDatabaseType;
 import com.example.paymentsdemo.domain.Account;
 import com.example.paymentsdemo.domain.AccountStatus;
-import com.example.paymentsdemo.domain.LedgerDirection;
 import com.example.paymentsdemo.domain.LedgerEntry;
 import com.example.paymentsdemo.domain.Merchant;
 import com.example.paymentsdemo.domain.MerchantPaymentAttempt;
-import com.example.paymentsdemo.domain.MerchantRequestStatus;
 import com.example.paymentsdemo.domain.Payment;
 import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.domain.RiskTier;
@@ -15,6 +14,7 @@ import java.sql.SQLException;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -24,10 +24,10 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
-public class OracleSystemOfRecordRepository {
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
+public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
 
-    private static final Logger log = LoggerFactory.getLogger(OracleSystemOfRecordRepository.class);
+    private static final Logger log = LoggerFactory.getLogger(JdbcSystemOfRecordRepository.class);
 
     private static final RowMapper<Account> ACCOUNT_ROW_MAPPER = (rs, ignored) -> new Account(
             rs.getString("account_id"),
@@ -66,85 +66,94 @@ public class OracleSystemOfRecordRepository {
     );
 
     private final JdbcTemplate jdbcTemplate;
+    private final ExternalDatabaseType databaseType;
 
-    public OracleSystemOfRecordRepository(JdbcTemplate jdbcTemplate) {
+    public JdbcSystemOfRecordRepository(
+            JdbcTemplate jdbcTemplate,
+            @Value("${demo.external-db.type:oracle}") String databaseType
+    ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.databaseType = ExternalDatabaseType.from(databaseType);
     }
 
+    @Override
     public void initializeSchema() {
-        executeDdl("""
+        executeDdl(ddl("""
                 CREATE TABLE ACCOUNTS (
-                    ACCOUNT_ID VARCHAR2(64) PRIMARY KEY,
-                    CUSTOMER_NAME VARCHAR2(255) NOT NULL,
-                    AVAILABLE_BALANCE_MINOR NUMBER(19) NOT NULL,
-                    CURRENCY VARCHAR2(8) NOT NULL,
-                    STATUS VARCHAR2(32) NOT NULL,
-                    RISK_TIER VARCHAR2(32) NOT NULL
+                    ACCOUNT_ID $VARCHAR(64) PRIMARY KEY,
+                    CUSTOMER_NAME $VARCHAR(255) NOT NULL,
+                    AVAILABLE_BALANCE_MINOR $LONG NOT NULL,
+                    CURRENCY $VARCHAR(8) NOT NULL,
+                    STATUS $VARCHAR(32) NOT NULL,
+                    RISK_TIER $VARCHAR(32) NOT NULL
                 )
-                """);
+                """));
 
-        executeDdl("""
+        executeDdl(ddl("""
                 CREATE TABLE MERCHANTS (
-                    MERCHANT_ID VARCHAR2(64) PRIMARY KEY,
-                    NAME VARCHAR2(255) NOT NULL,
-                    CATEGORY VARCHAR2(64) NOT NULL,
-                    COUNTRY VARCHAR2(8) NOT NULL,
-                    ACTIVE NUMBER(1) NOT NULL,
-                    MAX_AMOUNT_MINOR NUMBER(19) NOT NULL,
-                    DAILY_LIMIT_MINOR NUMBER(19) NOT NULL,
-                    SERVICE_URL VARCHAR2(512) NOT NULL
+                    MERCHANT_ID $VARCHAR(64) PRIMARY KEY,
+                    NAME $VARCHAR(255) NOT NULL,
+                    CATEGORY $VARCHAR(64) NOT NULL,
+                    COUNTRY $VARCHAR(8) NOT NULL,
+                    ACTIVE $BOOLEAN NOT NULL,
+                    MAX_AMOUNT_MINOR $LONG NOT NULL,
+                    DAILY_LIMIT_MINOR $LONG NOT NULL,
+                    SERVICE_URL $VARCHAR(512) NOT NULL
                 )
-                """);
+                """));
 
-        executeDdl("""
+        executeDdl(ddl("""
                 CREATE TABLE PAYMENT_ARCHIVE (
-                    PAYMENT_ID VARCHAR2(64) PRIMARY KEY,
-                    ACCOUNT_ID VARCHAR2(64) NOT NULL,
-                    MERCHANT_ID VARCHAR2(64) NOT NULL,
-                    AMOUNT_MINOR NUMBER(19) NOT NULL,
-                    CURRENCY VARCHAR2(8) NOT NULL,
-                    STATUS VARCHAR2(32) NOT NULL,
-                    CREATED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    UPDATED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    DECLINE_REASON VARCHAR2(128),
-                    FRAUD_SCORE NUMBER(10,4) NOT NULL,
-                    SUSPICIOUS NUMBER(1) NOT NULL,
-                    CAPTURED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    REFUNDED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    MERCHANT_ATTEMPTED NUMBER(1) NOT NULL,
-                    MERCHANT_STATUS VARCHAR2(32),
-                    MERCHANT_REQUESTED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    MERCHANT_DEADLINE_EPOCH_MS NUMBER(19) NOT NULL,
-                    MERCHANT_RESPONDED_AT_EPOCH_MS NUMBER(19) NOT NULL,
-                    MERCHANT_REFERENCE VARCHAR2(255),
-                    MERCHANT_MESSAGE VARCHAR2(255),
-                    ARCHIVED_AT_EPOCH_MS NUMBER(19) NOT NULL
+                    PAYMENT_ID $VARCHAR(64) PRIMARY KEY,
+                    ACCOUNT_ID $VARCHAR(64) NOT NULL,
+                    MERCHANT_ID $VARCHAR(64) NOT NULL,
+                    AMOUNT_MINOR $LONG NOT NULL,
+                    CURRENCY $VARCHAR(8) NOT NULL,
+                    STATUS $VARCHAR(32) NOT NULL,
+                    CREATED_AT_EPOCH_MS $LONG NOT NULL,
+                    UPDATED_AT_EPOCH_MS $LONG NOT NULL,
+                    DECLINE_REASON $VARCHAR(128),
+                    FRAUD_SCORE $DECIMAL NOT NULL,
+                    SUSPICIOUS $BOOLEAN NOT NULL,
+                    CAPTURED_AT_EPOCH_MS $LONG NOT NULL,
+                    REFUNDED_AT_EPOCH_MS $LONG NOT NULL,
+                    MERCHANT_ATTEMPTED $BOOLEAN NOT NULL,
+                    MERCHANT_STATUS $VARCHAR(32),
+                    MERCHANT_REQUESTED_AT_EPOCH_MS $LONG NOT NULL,
+                    MERCHANT_DEADLINE_EPOCH_MS $LONG NOT NULL,
+                    MERCHANT_RESPONDED_AT_EPOCH_MS $LONG NOT NULL,
+                    MERCHANT_REFERENCE $VARCHAR(255),
+                    MERCHANT_MESSAGE $VARCHAR(255),
+                    ARCHIVED_AT_EPOCH_MS $LONG NOT NULL
                 )
-                """);
+                """));
 
-        executeDdl("""
+        executeDdl(ddl("""
                 CREATE TABLE LEDGER_ENTRY_ARCHIVE (
-                    ENTRY_ID VARCHAR2(64) PRIMARY KEY,
-                    PAYMENT_ID VARCHAR2(64) NOT NULL,
-                    ACCOUNT_ID VARCHAR2(64) NOT NULL,
-                    MERCHANT_ID VARCHAR2(64) NOT NULL,
-                    DIRECTION VARCHAR2(16) NOT NULL,
-                    AMOUNT_MINOR NUMBER(19) NOT NULL,
-                    CURRENCY VARCHAR2(8) NOT NULL,
-                    ENTRY_TYPE VARCHAR2(32) NOT NULL,
-                    CREATED_AT_EPOCH_MS NUMBER(19) NOT NULL
+                    ENTRY_ID $VARCHAR(64) PRIMARY KEY,
+                    PAYMENT_ID $VARCHAR(64) NOT NULL,
+                    ACCOUNT_ID $VARCHAR(64) NOT NULL,
+                    MERCHANT_ID $VARCHAR(64) NOT NULL,
+                    DIRECTION $VARCHAR(16) NOT NULL,
+                    AMOUNT_MINOR $LONG NOT NULL,
+                    CURRENCY $VARCHAR(8) NOT NULL,
+                    ENTRY_TYPE $VARCHAR(32) NOT NULL,
+                    CREATED_AT_EPOCH_MS $LONG NOT NULL
                 )
-                """);
+                """));
     }
 
+    @Override
     public long accountCount() {
         return queryForLong("SELECT COUNT(*) FROM ACCOUNTS");
     }
 
+    @Override
     public long merchantCount() {
         return queryForLong("SELECT COUNT(*) FROM MERCHANTS");
     }
 
+    @Override
     public boolean referenceDataReadable(int expectedAccounts, int expectedMerchants, String expectedMerchantUrl) {
         if (accountCount() != expectedAccounts || merchantCount() != expectedMerchants) {
             return false;
@@ -164,6 +173,7 @@ public class OracleSystemOfRecordRepository {
     }
 
     @Transactional
+    @Override
     public void resetDemoData() {
         jdbcTemplate.update("DELETE FROM LEDGER_ENTRY_ARCHIVE");
         jdbcTemplate.update("DELETE FROM PAYMENT_ARCHIVE");
@@ -172,46 +182,14 @@ public class OracleSystemOfRecordRepository {
     }
 
     @Transactional
+    @Override
     public void upsertAccounts(List<Account> accounts) {
         if (accounts.isEmpty()) {
             return;
         }
 
         jdbcTemplate.batchUpdate(
-                """
-                MERGE INTO ACCOUNTS target
-                USING (
-                    SELECT ? AS ACCOUNT_ID,
-                           ? AS CUSTOMER_NAME,
-                           ? AS AVAILABLE_BALANCE_MINOR,
-                           ? AS CURRENCY,
-                           ? AS STATUS,
-                           ? AS RISK_TIER
-                    FROM dual
-                ) source
-                ON (target.ACCOUNT_ID = source.ACCOUNT_ID)
-                WHEN MATCHED THEN UPDATE SET
-                    CUSTOMER_NAME = source.CUSTOMER_NAME,
-                    AVAILABLE_BALANCE_MINOR = source.AVAILABLE_BALANCE_MINOR,
-                    CURRENCY = source.CURRENCY,
-                    STATUS = source.STATUS,
-                    RISK_TIER = source.RISK_TIER
-                WHEN NOT MATCHED THEN INSERT (
-                    ACCOUNT_ID,
-                    CUSTOMER_NAME,
-                    AVAILABLE_BALANCE_MINOR,
-                    CURRENCY,
-                    STATUS,
-                    RISK_TIER
-                ) VALUES (
-                    source.ACCOUNT_ID,
-                    source.CUSTOMER_NAME,
-                    source.AVAILABLE_BALANCE_MINOR,
-                    source.CURRENCY,
-                    source.STATUS,
-                    source.RISK_TIER
-                )
-                """,
+                accountUpsertSql(),
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int index) throws SQLException {
@@ -233,54 +211,14 @@ public class OracleSystemOfRecordRepository {
     }
 
     @Transactional
+    @Override
     public void upsertMerchants(List<Merchant> merchants) {
         if (merchants.isEmpty()) {
             return;
         }
 
         jdbcTemplate.batchUpdate(
-                """
-                MERGE INTO MERCHANTS target
-                USING (
-                    SELECT ? AS MERCHANT_ID,
-                           ? AS NAME,
-                           ? AS CATEGORY,
-                           ? AS COUNTRY,
-                           ? AS ACTIVE,
-                           ? AS MAX_AMOUNT_MINOR,
-                           ? AS DAILY_LIMIT_MINOR,
-                           ? AS SERVICE_URL
-                    FROM dual
-                ) source
-                ON (target.MERCHANT_ID = source.MERCHANT_ID)
-                WHEN MATCHED THEN UPDATE SET
-                    NAME = source.NAME,
-                    CATEGORY = source.CATEGORY,
-                    COUNTRY = source.COUNTRY,
-                    ACTIVE = source.ACTIVE,
-                    MAX_AMOUNT_MINOR = source.MAX_AMOUNT_MINOR,
-                    DAILY_LIMIT_MINOR = source.DAILY_LIMIT_MINOR,
-                    SERVICE_URL = source.SERVICE_URL
-                WHEN NOT MATCHED THEN INSERT (
-                    MERCHANT_ID,
-                    NAME,
-                    CATEGORY,
-                    COUNTRY,
-                    ACTIVE,
-                    MAX_AMOUNT_MINOR,
-                    DAILY_LIMIT_MINOR,
-                    SERVICE_URL
-                ) VALUES (
-                    source.MERCHANT_ID,
-                    source.NAME,
-                    source.CATEGORY,
-                    source.COUNTRY,
-                    source.ACTIVE,
-                    source.MAX_AMOUNT_MINOR,
-                    source.DAILY_LIMIT_MINOR,
-                    source.SERVICE_URL
-                )
-                """,
+                merchantUpsertSql(),
                 new BatchPreparedStatementSetter() {
                     @Override
                     public void setValues(PreparedStatement ps, int index) throws SQLException {
@@ -303,6 +241,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public List<Account> loadAllAccounts() {
         return jdbcTemplate.query(
                 "SELECT account_id, customer_name, available_balance_minor, currency, status, risk_tier FROM ACCOUNTS",
@@ -310,6 +249,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public List<Merchant> loadAllMerchants() {
         return jdbcTemplate.query(
                 "SELECT merchant_id, name, category, country, active, max_amount_minor, daily_limit_minor, service_url FROM MERCHANTS",
@@ -317,6 +257,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public Account findAccount(String accountId) {
         return queryForObjectOrNull(
                 "SELECT account_id, customer_name, available_balance_minor, currency, status, risk_tier FROM ACCOUNTS WHERE account_id = ?",
@@ -325,6 +266,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public Merchant findMerchant(String merchantId) {
         return queryForObjectOrNull(
                 "SELECT merchant_id, name, category, country, active, max_amount_minor, daily_limit_minor, service_url FROM MERCHANTS WHERE merchant_id = ?",
@@ -334,6 +276,7 @@ public class OracleSystemOfRecordRepository {
     }
 
     @Transactional
+    @Override
     public Merchant setMerchantActive(String merchantId, boolean active) {
         int updated = jdbcTemplate.update(
                 "UPDATE MERCHANTS SET active = ? WHERE merchant_id = ?",
@@ -346,6 +289,7 @@ public class OracleSystemOfRecordRepository {
         return findMerchant(merchantId);
     }
 
+    @Override
     public long archivedMerchantDailyTotal(String merchantId, long startOfDayEpochMs) {
         return queryForLong(
                 """
@@ -362,6 +306,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public List<PaymentHistoryRow> loadRecentArchivedPayments(long windowStartEpochMs) {
         return jdbcTemplate.query(
                 """
@@ -392,6 +337,7 @@ public class OracleSystemOfRecordRepository {
         );
     }
 
+    @Override
     public Payment findArchivedPayment(String paymentId) {
         return queryForObjectOrNull(
                 """
@@ -417,6 +363,7 @@ public class OracleSystemOfRecordRepository {
     }
 
     @Transactional
+    @Override
     public boolean archiveCompletedPayment(Payment payment, MerchantPaymentAttempt attempt, List<LedgerEntry> ledgerEntries) {
         long existing = queryForLong(
                 "SELECT COUNT(*) FROM PAYMENT_ARCHIVE WHERE payment_id = ?",
@@ -437,7 +384,7 @@ public class OracleSystemOfRecordRepository {
                     payment.getAccountId()
             );
             if (updated == 0) {
-                throw new IllegalStateException("Oracle account missing for completed payment " + payment.getPaymentId());
+                throw new IllegalStateException("external DB account missing for completed payment " + payment.getPaymentId());
             }
         }
 
@@ -531,9 +478,151 @@ public class OracleSystemOfRecordRepository {
         return true;
     }
 
+    @Override
     public void enableReferenceTableCdc() {
+        if (databaseType != ExternalDatabaseType.ORACLE) {
+            return;
+        }
+
         executeOptionalSql("ALTER TABLE ACCOUNTS ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS");
         executeOptionalSql("ALTER TABLE MERCHANTS ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS");
+    }
+
+    private String ddl(String sql) {
+        String varcharType = databaseType == ExternalDatabaseType.ORACLE ? "VARCHAR2" : "VARCHAR";
+        String longType = databaseType == ExternalDatabaseType.ORACLE ? "NUMBER(19)" : "BIGINT";
+        String booleanType = databaseType == ExternalDatabaseType.ORACLE ? "NUMBER(1)" : "TINYINT";
+        String decimalType = databaseType == ExternalDatabaseType.ORACLE ? "NUMBER(10,4)" : "DECIMAL(10,4)";
+
+        return sql
+                .replace("$VARCHAR", varcharType)
+                .replace("$LONG", longType)
+                .replace("$BOOLEAN", booleanType)
+                .replace("$DECIMAL", decimalType);
+    }
+
+    private String accountUpsertSql() {
+        if (databaseType == ExternalDatabaseType.MARIADB) {
+            return """
+                    INSERT INTO ACCOUNTS (
+                        ACCOUNT_ID,
+                        CUSTOMER_NAME,
+                        AVAILABLE_BALANCE_MINOR,
+                        CURRENCY,
+                        STATUS,
+                        RISK_TIER
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        CUSTOMER_NAME = VALUES(CUSTOMER_NAME),
+                        AVAILABLE_BALANCE_MINOR = VALUES(AVAILABLE_BALANCE_MINOR),
+                        CURRENCY = VALUES(CURRENCY),
+                        STATUS = VALUES(STATUS),
+                        RISK_TIER = VALUES(RISK_TIER)
+                    """;
+        }
+
+        return """
+                MERGE INTO ACCOUNTS target
+                USING (
+                    SELECT ? AS ACCOUNT_ID,
+                           ? AS CUSTOMER_NAME,
+                           ? AS AVAILABLE_BALANCE_MINOR,
+                           ? AS CURRENCY,
+                           ? AS STATUS,
+                           ? AS RISK_TIER
+                    FROM dual
+                ) source
+                ON (target.ACCOUNT_ID = source.ACCOUNT_ID)
+                WHEN MATCHED THEN UPDATE SET
+                    CUSTOMER_NAME = source.CUSTOMER_NAME,
+                    AVAILABLE_BALANCE_MINOR = source.AVAILABLE_BALANCE_MINOR,
+                    CURRENCY = source.CURRENCY,
+                    STATUS = source.STATUS,
+                    RISK_TIER = source.RISK_TIER
+                WHEN NOT MATCHED THEN INSERT (
+                    ACCOUNT_ID,
+                    CUSTOMER_NAME,
+                    AVAILABLE_BALANCE_MINOR,
+                    CURRENCY,
+                    STATUS,
+                    RISK_TIER
+                ) VALUES (
+                    source.ACCOUNT_ID,
+                    source.CUSTOMER_NAME,
+                    source.AVAILABLE_BALANCE_MINOR,
+                    source.CURRENCY,
+                    source.STATUS,
+                    source.RISK_TIER
+                )
+                """;
+    }
+
+    private String merchantUpsertSql() {
+        if (databaseType == ExternalDatabaseType.MARIADB) {
+            return """
+                    INSERT INTO MERCHANTS (
+                        MERCHANT_ID,
+                        NAME,
+                        CATEGORY,
+                        COUNTRY,
+                        ACTIVE,
+                        MAX_AMOUNT_MINOR,
+                        DAILY_LIMIT_MINOR,
+                        SERVICE_URL
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        NAME = VALUES(NAME),
+                        CATEGORY = VALUES(CATEGORY),
+                        COUNTRY = VALUES(COUNTRY),
+                        ACTIVE = VALUES(ACTIVE),
+                        MAX_AMOUNT_MINOR = VALUES(MAX_AMOUNT_MINOR),
+                        DAILY_LIMIT_MINOR = VALUES(DAILY_LIMIT_MINOR),
+                        SERVICE_URL = VALUES(SERVICE_URL)
+                    """;
+        }
+
+        return """
+                MERGE INTO MERCHANTS target
+                USING (
+                    SELECT ? AS MERCHANT_ID,
+                           ? AS NAME,
+                           ? AS CATEGORY,
+                           ? AS COUNTRY,
+                           ? AS ACTIVE,
+                           ? AS MAX_AMOUNT_MINOR,
+                           ? AS DAILY_LIMIT_MINOR,
+                           ? AS SERVICE_URL
+                    FROM dual
+                ) source
+                ON (target.MERCHANT_ID = source.MERCHANT_ID)
+                WHEN MATCHED THEN UPDATE SET
+                    NAME = source.NAME,
+                    CATEGORY = source.CATEGORY,
+                    COUNTRY = source.COUNTRY,
+                    ACTIVE = source.ACTIVE,
+                    MAX_AMOUNT_MINOR = source.MAX_AMOUNT_MINOR,
+                    DAILY_LIMIT_MINOR = source.DAILY_LIMIT_MINOR,
+                    SERVICE_URL = source.SERVICE_URL
+                WHEN NOT MATCHED THEN INSERT (
+                    MERCHANT_ID,
+                    NAME,
+                    CATEGORY,
+                    COUNTRY,
+                    ACTIVE,
+                    MAX_AMOUNT_MINOR,
+                    DAILY_LIMIT_MINOR,
+                    SERVICE_URL
+                ) VALUES (
+                    source.MERCHANT_ID,
+                    source.NAME,
+                    source.CATEGORY,
+                    source.COUNTRY,
+                    source.ACTIVE,
+                    source.MAX_AMOUNT_MINOR,
+                    source.DAILY_LIMIT_MINOR,
+                    source.SERVICE_URL
+                )
+                """;
     }
 
     private void executeDdl(String sql) {
@@ -543,17 +632,25 @@ public class OracleSystemOfRecordRepository {
             if (!isAlreadyExists(e)) {
                 throw e;
             }
-            log.debug("Skipping existing Oracle object for DDL: {}", sql);
+            log.debug("Skipping existing external DB object for DDL: {}", sql);
         }
     }
 
     private boolean isAlreadyExists(DataAccessException e) {
         Throwable cause = e.getCause();
         while (cause != null) {
+            if (cause instanceof SQLException sqlException
+                    && (sqlException.getErrorCode() == 955
+                    || sqlException.getErrorCode() == 1050
+                    || "42S01".equals(sqlException.getSQLState()))) {
+                return true;
+            }
+
             if (cause.getMessage() != null && (
                     cause.getMessage().contains("ORA-00955")
                             || cause.getMessage().contains("ORA-32588")
                             || cause.getMessage().contains("ORA-32589")
+                            || cause.getMessage().contains("already exists")
             )) {
                 return true;
             }
@@ -569,7 +666,7 @@ public class OracleSystemOfRecordRepository {
             if (!isAlreadyExists(e)) {
                 throw e;
             }
-            log.debug("Skipping existing Oracle supplemental logging state for SQL: {}", sql);
+            log.debug("Skipping existing external DB CDC setup state for SQL: {}", sql);
         }
     }
 

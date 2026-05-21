@@ -23,24 +23,24 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class DashboardService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
     private final SimulatorGatewayService simulatorGatewayService;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
 
     public DashboardService(
             Ignite ignite,
             FraudService fraudService,
             SimulatorGatewayService simulatorGatewayService,
-            OracleSystemOfRecordRepository oracleRepository
+            SystemOfRecordRepository systemOfRecordRepository
     ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
         this.simulatorGatewayService = simulatorGatewayService;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
     }
 
     public DashboardSnapshot snapshot() {
@@ -183,7 +183,7 @@ public class DashboardService {
                         )
                 ));
 
-        for (PaymentHistoryRow row : oracleRepository.loadRecentArchivedPayments(windowStart)) {
+        for (PaymentHistoryRow row : systemOfRecordRepository.loadRecentArchivedPayments(windowStart)) {
             payments.putIfAbsent(row.paymentId(), row);
         }
 

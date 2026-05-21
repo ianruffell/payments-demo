@@ -8,19 +8,19 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class MerchantAdminService {
 
     private final Ignite ignite;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
 
-    public MerchantAdminService(Ignite ignite, OracleSystemOfRecordRepository oracleRepository) {
+    public MerchantAdminService(Ignite ignite, SystemOfRecordRepository systemOfRecordRepository) {
         this.ignite = ignite;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
     }
 
     public Merchant setMerchantActive(String merchantId, boolean active) {
-        Merchant merchant = oracleRepository.setMerchantActive(merchantId, active);
+        Merchant merchant = systemOfRecordRepository.setMerchantActive(merchantId, active);
         if (merchant == null) {
             throw new ResponseStatusException(NOT_FOUND, "Unknown merchantId");
         }

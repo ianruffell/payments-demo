@@ -31,13 +31,13 @@ import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class PaymentService {
 
     private final Ignite ignite;
     private final FraudService fraudService;
     private final MerchantDispatchService merchantDispatchService;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
     private final String processorCallbackUrl;
     private final long merchantTimeoutMs;
 
@@ -45,20 +45,20 @@ public class PaymentService {
             Ignite ignite,
             FraudService fraudService,
             MerchantDispatchService merchantDispatchService,
-            OracleSystemOfRecordRepository oracleRepository,
+            SystemOfRecordRepository systemOfRecordRepository,
             @Value("${demo.processor.callback-url:http://payments-demo-app:8080/api/merchant-results}") String processorCallbackUrl,
             @Value("${demo.processor.merchant-timeout-ms:10000}") long merchantTimeoutMs
     ) {
         this.ignite = ignite;
         this.fraudService = fraudService;
         this.merchantDispatchService = merchantDispatchService;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
         this.processorCallbackUrl = processorCallbackUrl;
         this.merchantTimeoutMs = merchantTimeoutMs;
     }
 
     public PaymentOperationResult authorize(AuthorizePaymentRequest request) {
-        Payment archived = oracleRepository.findArchivedPayment(request.paymentId());
+        Payment archived = systemOfRecordRepository.findArchivedPayment(request.paymentId());
         if (archived != null) {
             return new PaymentOperationResult(archived, "Duplicate payment id", true);
         }
@@ -514,7 +514,7 @@ public class PaymentService {
         try (var cursor = ignite.cache(CacheNames.PAYMENTS).query(query)) {
             var row = cursor.getAll().stream().findFirst().orElse(null);
             long activeTotal = row == null || row.isEmpty() || row.get(0) == null ? 0L : ((Number) row.get(0)).longValue();
-            return activeTotal + oracleRepository.archivedMerchantDailyTotal(merchantId, startOfDay);
+            return activeTotal + systemOfRecordRepository.archivedMerchantDailyTotal(merchantId, startOfDay);
         }
     }
 
@@ -528,7 +528,7 @@ public class PaymentService {
             return account;
         }
 
-        account = oracleRepository.findAccount(accountId);
+        account = systemOfRecordRepository.findAccount(accountId);
         if (account != null) {
             accounts.put(accountId, account);
         }
@@ -541,7 +541,7 @@ public class PaymentService {
             return merchant;
         }
 
-        merchant = oracleRepository.findMerchant(merchantId);
+        merchant = systemOfRecordRepository.findMerchant(merchantId);
         if (merchant != null) {
             merchants.put(merchantId, merchant);
         }

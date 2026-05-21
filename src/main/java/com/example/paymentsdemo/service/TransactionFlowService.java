@@ -20,18 +20,18 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class TransactionFlowService {
 
     private static final long WINDOW_SECONDS = 300L;
     private static final long THROUGHPUT_WINDOW_SECONDS = 60L;
 
     private final Ignite ignite;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
 
-    public TransactionFlowService(Ignite ignite, OracleSystemOfRecordRepository oracleRepository) {
+    public TransactionFlowService(Ignite ignite, SystemOfRecordRepository systemOfRecordRepository) {
         this.ignite = ignite;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
     }
 
     public TransactionFlowSnapshot snapshot() {
@@ -194,7 +194,7 @@ public class TransactionFlowService {
             ));
         }
 
-        for (PaymentHistoryRow row : oracleRepository.loadRecentArchivedPayments(windowStart)) {
+        for (PaymentHistoryRow row : systemOfRecordRepository.loadRecentArchivedPayments(windowStart)) {
             payments.putIfAbsent(row.paymentId(), row);
         }
 

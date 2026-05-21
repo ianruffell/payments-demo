@@ -1,6 +1,6 @@
 # GridGain Payments Demo
 
-Small real-time card-transaction demo built with Java, Spring Boot, Oracle, Debezium, GridGain, and a browser dashboard.
+Small real-time card-transaction demo built with Java, Spring Boot, Oracle or MariaDB, Debezium, GridGain, and a browser dashboard.
 
 ## What it models
 
@@ -11,10 +11,10 @@ Small real-time card-transaction demo built with Java, Spring Boot, Oracle, Debe
 
 ## What it shows
 
-1. Treat Oracle as the system of record for reference data and completed payments.
-2. Use Debezium to project Oracle `accounts` and `merchants` changes into GridGain, which acts as the live cache for in-flight transactions.
+1. Treat an external database, Oracle or MariaDB, as the system of record for reference data and completed payments.
+2. Use Debezium to project `accounts` and `merchants` changes into GridGain, which acts as the live cache for in-flight transactions.
 3. Keep active payments in GridGain while they are moving through auth, merchant review, capture, and refund handling.
-4. Archive terminal payments back to Oracle asynchronously, then evict them from GridGain once the Oracle write succeeds.
+4. Archive terminal payments back to the external database asynchronously, then evict them from GridGain once the external write succeeds.
 5. Load `100k` accounts and `10` merchants on startup when the stores are empty.
 6. Start a simulator to generate authorize traffic, automatic captures, and occasional refunds.
 7. Watch live throughput, approval rate, declines by reason, top merchants, and suspicious payments at `http://localhost:8080`.
@@ -22,20 +22,26 @@ Small real-time card-transaction demo built with Java, Spring Boot, Oracle, Debe
 
 ## Run
 
-The simplest local stack is Docker Compose:
+The local stack is Docker Compose. Choose the external database with the matching env file:
 
 ```bash
-docker compose up --build
+docker compose --env-file .env.oracle up --build
+```
+
+or:
+
+```bash
+docker compose --env-file .env.mariadb up --build
 ```
 
 That starts:
 
-- Oracle Free on `localhost:1521` with `FREEPDB1`
-- Kafka and Kafka Connect with the Debezium Oracle connector
+- Oracle Free on `localhost:1521` with `FREEPDB1`, or MariaDB on `localhost:3306` with `payments_app`
+- Kafka and Kafka Connect with the matching Debezium connector
 - A three-node GridGain cluster
 - The Spring Boot processor on `http://localhost:8080`
 - Ten merchant simulator containers
-- The payment initiator and the Oracle-to-GridGain CDC sink
+- The payment initiator and the external DB-to-GridGain CDC sink
 
 Then open `http://localhost:8080` or `http://localhost:8080/flow.html`.
 
@@ -50,11 +56,11 @@ export DEMO_GRIDGAIN_DISCOVERY_ADDRESSES_1=10.0.0.12:47500..47509
 mvn spring-boot:run
 ```
 
-For a full local Oracle/Debezium stack in this mode, you also need:
+For a full local Debezium stack in this mode, you also need one external database configured through Spring properties:
 
-- Oracle reachable at `jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1`
+- Oracle reachable at `jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1` with `demo.external-db.type=oracle`, or MariaDB reachable at `jdbc:mariadb://mariadb:3306/payments_app` with `demo.external-db.type=mariadb`
 - Kafka reachable at `kafka:9092`
-- A Kafka Connect worker with the Debezium Oracle connector and `ojdbc11.jar`
+- A Kafka Connect worker with the matching Debezium connector; Oracle also requires `ojdbc11.jar`
 
 ## Main APIs
 

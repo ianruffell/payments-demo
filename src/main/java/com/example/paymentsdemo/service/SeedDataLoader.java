@@ -18,7 +18,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("!merchant-simulator & !payment-initiator & !oracle-cache-sink")
+@Profile("!merchant-simulator & !payment-initiator & !reference-cache-sink & !oracle-cache-sink")
 public class SeedDataLoader implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SeedDataLoader.class);
@@ -37,7 +37,7 @@ public class SeedDataLoader implements ApplicationRunner {
     );
 
     private final Ignite ignite;
-    private final OracleSystemOfRecordRepository oracleRepository;
+    private final SystemOfRecordRepository systemOfRecordRepository;
     private final boolean enabled;
     private final int accountCount;
     private final int merchantCount;
@@ -46,7 +46,7 @@ public class SeedDataLoader implements ApplicationRunner {
 
     public SeedDataLoader(
             Ignite ignite,
-            OracleSystemOfRecordRepository oracleRepository,
+            SystemOfRecordRepository systemOfRecordRepository,
             @Value("${demo.seed.enabled:true}") boolean enabled,
             @Value("${demo.seed.accounts:100000}") int accountCount,
             @Value("${demo.seed.merchants:5}") int merchantCount,
@@ -54,7 +54,7 @@ public class SeedDataLoader implements ApplicationRunner {
             @Value("${demo.seed.merchant-min-daily-limit-minor:10000000000}") long merchantMinDailyLimitMinor
     ) {
         this.ignite = ignite;
-        this.oracleRepository = oracleRepository;
+        this.systemOfRecordRepository = systemOfRecordRepository;
         this.enabled = enabled;
         this.accountCount = accountCount;
         this.merchantCount = merchantCount;
@@ -69,39 +69,43 @@ public class SeedDataLoader implements ApplicationRunner {
             return;
         }
 
-        oracleRepository.initializeSchema();
+        systemOfRecordRepository.initializeSchema();
 
-        long oracleAccounts = oracleRepository.accountCount();
-        long oracleMerchants = oracleRepository.merchantCount();
-        log.info("Seed store sizes before loading: oracleAccounts={}, oracleMerchants={}", oracleAccounts, oracleMerchants);
+        long systemOfRecordAccounts = systemOfRecordRepository.accountCount();
+        long systemOfRecordMerchants = systemOfRecordRepository.merchantCount();
+        log.info(
+                "Seed store sizes before loading: systemOfRecordAccounts={}, systemOfRecordMerchants={}",
+                systemOfRecordAccounts,
+                systemOfRecordMerchants
+        );
 
-        if ((oracleAccounts > 0 || oracleMerchants > 0) && !seedDataReadable()) {
+        if ((systemOfRecordAccounts > 0 || systemOfRecordMerchants > 0) && !seedDataReadable()) {
             log.warn("Existing demo seed data is not readable by this application. Resetting demo caches and reloading.");
             resetDemoStores();
-            oracleAccounts = 0;
-            oracleMerchants = 0;
+            systemOfRecordAccounts = 0;
+            systemOfRecordMerchants = 0;
         }
 
-        if (oracleAccounts == 0) {
+        if (systemOfRecordAccounts == 0) {
             loadAccounts();
         } else {
-            log.info("Skipping account seed load because Oracle already contains {} entries.", oracleAccounts);
+            log.info("Skipping account seed load because system of record already contains {} entries.", systemOfRecordAccounts);
         }
 
-        if (oracleMerchants == 0) {
+        if (systemOfRecordMerchants == 0) {
             loadMerchants();
         } else {
-            log.info("Skipping merchant seed load because Oracle already contains {} entries.", oracleMerchants);
+            log.info("Skipping merchant seed load because system of record already contains {} entries.", systemOfRecordMerchants);
         }
 
         normalizeMerchantLimits();
-        oracleRepository.enableReferenceTableCdc();
+        systemOfRecordRepository.enableReferenceTableCdc();
         refreshReferenceCaches();
     }
 
     private boolean seedDataReadable() {
         try {
-            return oracleRepository.referenceDataReadable(accountCount, merchantCount, merchantUrlFor(1));
+            return systemOfRecordRepository.referenceDataReadable(accountCount, merchantCount, merchantUrlFor(1));
         } catch (RuntimeException e) {
             log.warn("Failed to read existing seed data.", e);
             return false;
@@ -114,11 +118,11 @@ public class SeedDataLoader implements ApplicationRunner {
         ignite.cache(CacheNames.LEDGER_ENTRIES).removeAll();
         ignite.cache(CacheNames.ACCOUNTS).removeAll();
         ignite.cache(CacheNames.MERCHANTS).removeAll();
-        oracleRepository.resetDemoData();
+        systemOfRecordRepository.resetDemoData();
     }
 
     private void loadAccounts() {
-        log.info("Loading {} accounts into Oracle.", accountCount);
+        log.info("Loading {} accounts into the system of record.", accountCount);
 
         List<Account> batch = new ArrayList<>(1000);
         for (int i = 1; i <= accountCount; i++) {
@@ -133,20 +137,20 @@ public class SeedDataLoader implements ApplicationRunner {
             );
             batch.add(account);
             if (batch.size() == 1000) {
-                oracleRepository.upsertAccounts(batch);
+                systemOfRecordRepository.upsertAccounts(batch);
                 batch.clear();
             }
         }
 
         if (!batch.isEmpty()) {
-            oracleRepository.upsertAccounts(batch);
+            systemOfRecordRepository.upsertAccounts(batch);
         }
 
         log.info("Finished loading accounts.");
     }
 
     private void loadMerchants() {
-        log.info("Loading {} merchants into Oracle.", merchantCount);
+        log.info("Loading {} merchants into the system of record.", merchantCount);
 
         List<Merchant> batch = new ArrayList<>(250);
         for (int i = 1; i <= merchantCount; i++) {
@@ -163,20 +167,20 @@ public class SeedDataLoader implements ApplicationRunner {
             );
             batch.add(merchant);
             if (batch.size() == 250) {
-                oracleRepository.upsertMerchants(batch);
+                systemOfRecordRepository.upsertMerchants(batch);
                 batch.clear();
             }
         }
 
         if (!batch.isEmpty()) {
-            oracleRepository.upsertMerchants(batch);
+            systemOfRecordRepository.upsertMerchants(batch);
         }
 
         log.info("Finished loading merchants.");
     }
 
     private void normalizeMerchantLimits() {
-        List<Merchant> merchants = oracleRepository.loadAllMerchants();
+        List<Merchant> merchants = systemOfRecordRepository.loadAllMerchants();
         List<Merchant> updated = new ArrayList<>();
 
         for (Merchant merchant : merchants) {
@@ -189,7 +193,7 @@ public class SeedDataLoader implements ApplicationRunner {
         }
 
         if (!updated.isEmpty()) {
-            oracleRepository.upsertMerchants(updated);
+            systemOfRecordRepository.upsertMerchants(updated);
             log.info(
                     "Raised daily limits for {} merchant(s) to at least {} minor units.",
                     updated.size(),
@@ -207,11 +211,11 @@ public class SeedDataLoader implements ApplicationRunner {
             accountStreamer.perNodeBufferSize(4096);
             merchantStreamer.perNodeBufferSize(2048);
 
-            for (Account account : oracleRepository.loadAllAccounts()) {
+            for (Account account : systemOfRecordRepository.loadAllAccounts()) {
                 accountStreamer.addData(account.getAccountId(), account);
             }
 
-            for (Merchant merchant : oracleRepository.loadAllMerchants()) {
+            for (Merchant merchant : systemOfRecordRepository.loadAllMerchants()) {
                 merchantStreamer.addData(merchant.getMerchantId(), merchant);
             }
         }
