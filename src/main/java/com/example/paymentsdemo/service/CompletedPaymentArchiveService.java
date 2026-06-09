@@ -33,6 +33,7 @@ public class CompletedPaymentArchiveService {
 
     private final Ignite ignite;
     private final SystemOfRecordRepository systemOfRecordRepository;
+    private final SemanticInvestigationService semanticInvestigationService;
     private final long pollIntervalMs;
     private final long capturedRetentionMs;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
@@ -40,11 +41,13 @@ public class CompletedPaymentArchiveService {
     public CompletedPaymentArchiveService(
             Ignite ignite,
             SystemOfRecordRepository systemOfRecordRepository,
+            SemanticInvestigationService semanticInvestigationService,
             @Value("${demo.external-db.archive.poll-interval-ms:1000}") long pollIntervalMs,
             @Value("${demo.external-db.archive.captured-retention-ms:15000}") long capturedRetentionMs
     ) {
         this.ignite = ignite;
         this.systemOfRecordRepository = systemOfRecordRepository;
+        this.semanticInvestigationService = semanticInvestigationService;
         this.pollIntervalMs = pollIntervalMs;
         this.capturedRetentionMs = capturedRetentionMs;
     }
@@ -108,6 +111,7 @@ public class CompletedPaymentArchiveService {
             return;
         }
 
+        semanticInvestigationService.indexArchivedPayment(payment);
         removeFromGridGain(paymentId);
     }
 

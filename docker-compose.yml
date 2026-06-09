@@ -14,7 +14,6 @@ x-gridgain-def:
     JVM_MAX_MEM: "2g"
     JVM_MIN_MEM: "1g"
     CONFIG_URI: "/opt/gridgain/etc/ignite-config.xml"
-    OPTION_LIBS: "control-center-agent"
   volumes:
     - ./gridgain-license.xml:/opt/gridgain/gridgain-license.xml
     - ./src/main/resources/ignite-config.xml:/opt/gridgain/etc/ignite-config.xml
@@ -41,7 +40,7 @@ services:
       - ./oracle/init:/container-entrypoint-initdb.d:ro
 
   mariadb:
-    image: mariadb:11.4
+    image: mariadb:11.8
     profiles:
       - mariadb
     command:
@@ -65,6 +64,24 @@ services:
     volumes:
       - mariadb-data:/var/lib/mysql
       - ./mariadb/init:/docker-entrypoint-initdb.d:ro
+
+  metabase:
+    image: metabase/metabase:latest
+    profiles:
+      - mariadb
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MB_DB_TYPE: mysql
+      MB_DB_HOST: mariadb
+      MB_DB_PORT: 3306
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabase
+    ports:
+      - "3000:3000"
+    restart: on-failure
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
@@ -158,41 +175,6 @@ services:
       - 11213:11211
       - 47102:47100
       - 47502:47501
-      
-  control-center-backend:
-    image: gridgain/control-center-backend:latest
-    restart: on-failure
-    environment:
-      # Tune JVM options for Control Center if needed
-      - JVM_OPTS=
-    ports:
-      # HOST:CONTAINER
-      - "3000:3000"
-
-  control-center-frontend:
-    image: gridgain/control-center-frontend:latest
-    depends_on:
-      - control-center-backend
-    volumes:
-      # Nginx config for routing UI -> backend
-      - ./src/main/resources/control-center.conf:/etc/nginx/control-center.conf
-    ports:
-      # HOST:CONTAINER
-      - "8008:8008"
-
-  control-center-bootstrap:
-    image: gridgain/ultimate:8.9.32
-    depends_on:
-      - gg8-node1
-      - control-center-backend
-    command: ["/bin/sh", "/scripts/register-control-center.sh"]
-    restart: on-failure
-    environment:
-      GRIDGAIN_MANAGEMENT_HOST: gg8-node1
-      GRIDGAIN_MANAGEMENT_PORT: 11211
-      GRIDGAIN_CONTROL_CENTER_URI: http://control-center-backend:3000
-    volumes:
-      - ./gridgain/register-control-center.sh:/scripts/register-control-center.sh:ro
 
   merchant-00001:
     build:
@@ -201,7 +183,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: merchant-simulator
       DEMO_MERCHANT_ID: MER-00001
-      DEMO_MERCHANT_NAME: Merchant 00001
+      DEMO_MERCHANT_NAME: Skytrail Journeys
       DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
       DEMO_MERCHANT_MIN_DELAY_MS: 350
       DEMO_MERCHANT_MAX_DELAY_MS: 2400
@@ -219,7 +201,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: merchant-simulator
       DEMO_MERCHANT_ID: MER-00002
-      DEMO_MERCHANT_NAME: Merchant 00002
+      DEMO_MERCHANT_NAME: Jackpot Junction
       DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
       DEMO_MERCHANT_MIN_DELAY_MS: 500
       DEMO_MERCHANT_MAX_DELAY_MS: 3200
@@ -237,7 +219,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: merchant-simulator
       DEMO_MERCHANT_ID: MER-00003
-      DEMO_MERCHANT_NAME: Merchant 00003
+      DEMO_MERCHANT_NAME: Green Basket Market
       DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
       DEMO_MERCHANT_MIN_DELAY_MS: 850
       DEMO_MERCHANT_MAX_DELAY_MS: 4300
@@ -255,7 +237,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: merchant-simulator
       DEMO_MERCHANT_ID: MER-00004
-      DEMO_MERCHANT_NAME: Merchant 00004
+      DEMO_MERCHANT_NAME: Cornerstone Goods
       DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
       DEMO_MERCHANT_MIN_DELAY_MS: 1200
       DEMO_MERCHANT_MAX_DELAY_MS: 5200
@@ -273,7 +255,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: merchant-simulator
       DEMO_MERCHANT_ID: MER-00005
-      DEMO_MERCHANT_NAME: Merchant 00005
+      DEMO_MERCHANT_NAME: Lucky Lantern Casino
       DEMO_MERCHANT_CALLBACK_URL: http://payments-demo-app:8080/api/merchant-results
       DEMO_MERCHANT_MIN_DELAY_MS: 1450
       DEMO_MERCHANT_MAX_DELAY_MS: 5600

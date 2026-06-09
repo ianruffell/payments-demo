@@ -44,4 +44,3 @@ demo:
     base-url: http://payments-demo-app:8080
     callback-url: http://payments-demo-app:8080/api/merchant-results
     merchant-timeout-ms: 10000
-```

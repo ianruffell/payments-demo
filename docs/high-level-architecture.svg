@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">GridGain Payments Demo High-Level Architecture</title>
+  <desc id="desc">High-level architecture diagram for a real-time payments demo using Spring Boot, GridGain, merchant simulators, a system-of-record database, Debezium, Kafka, and optional GridGain Control Center.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="55%" stop-color="#eef6ff"/>
+      <stop offset="100%" stop-color="#f7f3ff"/>
+    </linearGradient>
+    <linearGradient id="appGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#dcfce7"/>
+      <stop offset="100%" stop-color="#bbf7d0"/>
+    </linearGradient>
+    <linearGradient id="gridGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#cffafe"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+    <linearGradient id="dbGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fef3c7"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <linearGradient id="cdcGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffedd5"/>
+      <stop offset="100%" stop-color="#fed7aa"/>
+    </linearGradient>
+    <linearGradient id="ccGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ede9fe"/>
+      <stop offset="100%" stop-color="#ddd6fe"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea580c"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/>
+    </marker>
+    <style>
+      .title { font: 700 42px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 18px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .section { font: 700 18px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: .08em; fill: #64748b; }
+      .label { font: 700 24px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .small { font: 500 15px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .tiny { font: 600 13px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .flowLabel { font: 700 14px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
+      .card { stroke-width: 1.5; filter: url(#softShadow); }
+      .mini { stroke-width: 1.3; filter: url(#smallShadow); }
+      .arrowBlue { fill: none; stroke: #2563eb; stroke-width: 3.5; marker-end: url(#arrowBlue); stroke-linecap: round; stroke-linejoin: round; }
+      .arrowGreen { fill: none; stroke: #16a34a; stroke-width: 3.5; marker-end: url(#arrowGreen); stroke-linecap: round; stroke-linejoin: round; }
+      .arrowOrange { fill: none; stroke: #ea580c; stroke-width: 3.5; marker-end: url(#arrowOrange); stroke-linecap: round; stroke-linejoin: round; }
+      .arrowPurple { fill: none; stroke: #7c3aed; stroke-width: 3.5; marker-end: url(#arrowPurple); stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 9 9; }
+      .mutedLine { fill: none; stroke: #94a3b8; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 6 8; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <path d="M0 760 C260 690 360 830 610 760 C870 685 1050 770 1250 705 C1415 650 1510 680 1600 630 L1600 900 L0 900 Z" fill="#ffffff" opacity="0.45"/>
+  <path d="M70 815 H1530" class="mutedLine"/>
+
+  <text x="80" y="84" class="title">Payments Demo Architecture</text>
+  <text x="82" y="122" class="subtitle">Real-time payment processing with GridGain hot state, external system of record, and CDC-backed reference data.</text>
+
+  <g transform="translate(80 176)">
+    <text x="0" y="-24" class="section">USERS AND TRAFFIC</text>
+    <rect class="card" x="0" y="0" width="280" height="230" rx="28" fill="#eff6ff" stroke="#93c5fd"/>
+    <rect x="34" y="42" width="95" height="64" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+    <rect x="49" y="57" width="65" height="34" rx="4" fill="#ffffff" stroke="#60a5fa"/>
+    <circle cx="170" cy="72" r="34" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+    <path d="M160 55 L192 72 L160 89 Z" fill="#7c3aed"/>
+    <text x="34" y="148" class="label">Dashboard +</text>
+    <text x="34" y="178" class="label">simulator</text>
+    <text x="34" y="209" class="small">Browser UI and generated traffic</text>
+  </g>
+
+  <g transform="translate(440 158)">
+    <text x="0" y="-24" class="section">APPLICATION</text>
+    <rect class="card" x="0" y="0" width="350" height="270" rx="32" fill="url(#appGrad)" stroke="#16a34a"/>
+    <rect x="34" y="38" width="96" height="74" rx="15" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+    <path d="M57 64 H106 M57 82 H102 M57 100 H88" stroke="#16a34a" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="220" cy="74" r="42" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+    <path d="M203 74 H237 M220 57 V91" stroke="#16a34a" stroke-width="8" stroke-linecap="round"/>
+    <text x="34" y="152" class="label">payments-demo-app</text>
+    <text x="34" y="186" class="small">Spring Boot REST API</text>
+    <text x="34" y="212" class="small">PaymentService, dashboard, archive</text>
+    <text x="34" y="238" class="small">Merchant dispatch and callbacks</text>
+  </g>
+
+  <g transform="translate(880 176)">
+    <text x="0" y="-24" class="section">MERCHANT EDGE</text>
+    <rect class="card" x="0" y="0" width="270" height="205" rx="28" fill="#fff7ed" stroke="#fdba74"/>
+    <path d="M45 82 H210 L190 42 H65 Z" fill="#fed7aa" stroke="#ea580c" stroke-width="2"/>
+    <path d="M72 82 V134 H184 V82" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+    <rect x="95" y="102" width="34" height="32" rx="4" fill="#ffffff" stroke="#fb923c"/>
+    <rect x="145" y="102" width="26" height="32" rx="4" fill="#ffffff" stroke="#fb923c"/>
+    <text x="34" y="160" class="label">Merchant simulators</text>
+    <text x="34" y="190" class="small">Approve, decline, or timeout</text>
+  </g>
+
+  <g transform="translate(1235 160)">
+    <text x="0" y="-24" class="section">OPERATIONS</text>
+    <rect class="card" x="0" y="0" width="285" height="230" rx="28" fill="url(#ccGrad)" stroke="#8b5cf6"/>
+    <circle cx="76" cy="76" r="43" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <path d="M76 76 L103 54" stroke="#7c3aed" stroke-width="7" stroke-linecap="round"/>
+    <path d="M48 94 A35 35 0 0 1 104 94" fill="none" stroke="#7c3aed" stroke-width="7" stroke-linecap="round"/>
+    <rect x="151" y="47" width="80" height="58" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <path d="M170 72 H212 M170 90 H198" stroke="#7c3aed" stroke-width="6" stroke-linecap="round"/>
+    <text x="34" y="152" class="label">Control Center</text>
+    <text x="34" y="184" class="small">Optional cluster monitoring</text>
+    <text x="34" y="210" class="tiny">Separate compose file and network</text>
+  </g>
+
+  <g transform="translate(470 520)">
+    <text x="0" y="-26" class="section">REAL-TIME STATE</text>
+    <rect class="card" x="0" y="0" width="465" height="220" rx="34" fill="url(#gridGrad)" stroke="#0891b2"/>
+    <circle cx="92" cy="75" r="38" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+    <circle cx="178" cy="75" r="38" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+    <circle cx="264" cy="75" r="38" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/>
+    <path d="M130 75 H140 M216 75 H226" stroke="#0891b2" stroke-width="5" stroke-linecap="round"/>
+    <text x="73" y="83" class="tiny">Node</text>
+    <text x="159" y="83" class="tiny">Node</text>
+    <text x="245" y="83" class="tiny">Node</text>
+    <text x="34" y="145" class="label">GridGain 8 cluster</text>
+    <text x="34" y="177" class="small">Hot caches for reference data, payments,</text>
+    <text x="34" y="203" class="small">merchant attempts, and ledger entries</text>
+  </g>
+
+  <g transform="translate(80 565)">
+    <text x="0" y="-26" class="section">SYSTEM OF RECORD</text>
+    <rect class="card" x="0" y="0" width="300" height="200" rx="30" fill="url(#dbGrad)" stroke="#d97706"/>
+    <ellipse cx="150" cy="58" rx="78" ry="25" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+    <path d="M72 58 V120 C72 134 107 145 150 145 C193 145 228 134 228 120 V58" fill="#fde68a" stroke="#d97706" stroke-width="2"/>
+    <ellipse cx="150" cy="120" rx="78" ry="25" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="38" y="160" class="label">MariaDB or Oracle</text>
+    <text x="38" y="190" class="small">Durable reference and history</text>
+  </g>
+
+  <g transform="translate(1035 540)">
+    <text x="0" y="-26" class="section">CDC PIPELINE</text>
+    <rect class="card" x="0" y="0" width="485" height="230" rx="32" fill="url(#cdcGrad)" stroke="#ea580c"/>
+    <g transform="translate(34 54)">
+      <rect class="mini" x="0" y="0" width="116" height="72" rx="18" fill="#fff7ed" stroke="#ea580c"/>
+      <text x="58" y="32" text-anchor="middle" class="tiny">Debezium</text>
+      <text x="58" y="52" text-anchor="middle" class="tiny">Connect</text>
+    </g>
+    <g transform="translate(184 54)">
+      <rect class="mini" x="0" y="0" width="116" height="72" rx="18" fill="#fff7ed" stroke="#ea580c"/>
+      <path d="M34 25 H84 M34 38 H84 M34 51 H84" stroke="#ea580c" stroke-width="5" stroke-linecap="round"/>
+      <text x="58" y="92" text-anchor="middle" class="tiny">Kafka</text>
+    </g>
+    <g transform="translate(334 54)">
+      <rect class="mini" x="0" y="0" width="116" height="72" rx="18" fill="#fff7ed" stroke="#ea580c"/>
+      <text x="58" y="32" text-anchor="middle" class="tiny">Reference</text>
+      <text x="58" y="52" text-anchor="middle" class="tiny">Cache Sink</text>
+    </g>
+    <path d="M150 90 H178" class="arrowOrange"/>
+    <path d="M300 90 H328" class="arrowOrange"/>
+    <text x="34" y="178" class="label">Database changes to cache</text>
+    <text x="34" y="207" class="small">Accounts and merchants stay current in GridGain</text>
+  </g>
+
+  <path d="M360 290 C385 290 400 292 432 292" class="arrowBlue"/>
+  <text x="365" y="266" class="flowLabel">UI + API calls</text>
+
+  <path d="M790 292 C820 292 840 280 880 278" class="arrowGreen"/>
+  <text x="805" y="258" class="flowLabel">merchant request</text>
+
+  <path d="M880 335 C830 370 805 380 790 382" class="arrowGreen"/>
+  <text x="803" y="400" class="flowLabel">callback</text>
+
+  <path d="M615 428 C615 458 660 480 695 520" class="arrowGreen"/>
+  <text x="650" y="478" class="flowLabel">hot state</text>
+
+  <path d="M515 740 C440 755 390 726 380 690" class="arrowOrange"/>
+  <text x="390" y="782" class="flowLabel">archive terminal payments</text>
+
+  <path d="M380 630 C555 575 705 582 1035 626" class="arrowOrange"/>
+  <text x="470" y="596" class="flowLabel">change log</text>
+
+  <path d="M1278 770 C1195 830 970 808 880 740" class="arrowOrange"/>
+  <text x="985" y="826" class="flowLabel">reference cache updates</text>
+
+  <path d="M1375 390 C1300 455 1070 455 900 545" class="arrowPurple"/>
+  <text x="1080" y="448" class="flowLabel">cluster monitoring</text>
+
+  <g transform="translate(80 815)">
+    <rect x="0" y="0" width="20" height="8" rx="4" fill="#2563eb"/>
+    <text x="32" y="10" class="tiny">User and service calls</text>
+    <rect x="250" y="0" width="20" height="8" rx="4" fill="#16a34a"/>
+    <text x="282" y="10" class="tiny">Payment hot path</text>
+    <rect x="470" y="0" width="20" height="8" rx="4" fill="#ea580c"/>
+    <text x="502" y="10" class="tiny">Durable data and CDC</text>
+    <rect x="725" y="0" width="20" height="8" rx="4" fill="#7c3aed"/>
+    <text x="757" y="10" class="tiny">Optional operations path</text>
+  </g>
+</svg>

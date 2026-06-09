@@ -17,9 +17,9 @@
                     <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
                         <property name="addresses">
                             <list>
-                                <value>gridgain-node-1:47500</value>
-                                <value>gridgain-node-2:47500</value>
-                                <value>gridgain-node-3:47500</value>
+                                <value>gg8-node1:47500</value>
+                                <value>gg8-node2:47500</value>
+                                <value>gg8-node3:47500</value>
                             </list>
                         </property>
                     </bean>

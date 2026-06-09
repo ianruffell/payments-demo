@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GridGain Payments Demo</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -16,10 +17,17 @@
                 Authorize, capture, and refund flows backed by GridGain caches, live SQL metrics, and a browser dashboard.
             </p>
         </div>
-        <nav class="hero-actions">
-            <a class="nav-chip active" href="/">Dashboard</a>
-            <a class="nav-chip" href="/flow.html">Transaction Flow</a>
-        </nav>
+        <details class="page-menu">
+            <summary class="menu-trigger">
+                <span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>
+                <span class="sr-only">Open page menu</span>
+            </summary>
+            <nav class="page-menu__panel" aria-label="Pages">
+                <a class="menu-item active" href="/" aria-current="page">Dashboard</a>
+                <a class="menu-item" href="/flow.html">Transaction Flow</a>
+                <a class="menu-item" href="/investigation.html">AI Investigation</a>
+            </nav>
+        </details>
     </section>
 
     <section class="controls-grid">

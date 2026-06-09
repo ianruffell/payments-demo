@@ -1,0 +1,74 @@
+#  Copyright (C) GridGain Systems. All Rights Reserved.
+#  _________        _____ __________________        _____
+#  __  ____/___________(_)______  /__  ____/______ ____(_)_______
+#  _  / __  __  ___/__  / _  __  / _  / __  _  __ `/__  / __  __ \
+#  / /_/ /  _  /    _  /  / /_/ /  / /_/ /  / /_/ / _  /  _  / / /
+#  \____/   /_/     /_/   \_,__/   \____/   \__,_/  /_/   /_/ /_/
+
+name: gridgain
+
+services:
+  gg8-node1:
+    environment:
+      OPTION_LIBS: "control-center-agent"
+    networks:
+      - default
+      - control-center
+
+  gg8-node2:
+    environment:
+      OPTION_LIBS: "control-center-agent"
+    networks:
+      - default
+      - control-center
+
+  gg8-node3:
+    environment:
+      OPTION_LIBS: "control-center-agent"
+    networks:
+      - default
+      - control-center
+
+  control-center-backend:
+    image: gridgain/control-center-backend:latest
+    restart: on-failure
+    environment:
+      # Tune JVM options for Control Center if needed
+      - JVM_OPTS=
+    networks:
+      - control-center
+    ports:
+      # HOST:CONTAINER
+      - "3000:3000"
+
+  control-center-frontend:
+    image: gridgain/control-center-frontend:latest
+    depends_on:
+      - control-center-backend
+    networks:
+      - control-center
+    volumes:
+      # Nginx config for routing UI -> backend
+      - ./src/main/resources/control-center.conf:/etc/nginx/control-center.conf
+    ports:
+      # HOST:CONTAINER
+      - "8008:8008"
+
+  control-center-bootstrap:
+    image: gridgain/ultimate:8.9.32
+    depends_on:
+      - gg8-node1
+      - control-center-backend
+    command: ["/bin/sh", "/scripts/register-control-center.sh"]
+    restart: on-failure
+    environment:
+      GRIDGAIN_MANAGEMENT_HOST: gg8-node1
+      GRIDGAIN_MANAGEMENT_PORT: 11211
+      GRIDGAIN_CONTROL_CENTER_URI: http://control-center-backend:3000
+    networks:
+      - control-center
+    volumes:
+      - ./gridgain/register-control-center.sh:/scripts/register-control-center.sh:ro
+
+networks:
+  control-center:

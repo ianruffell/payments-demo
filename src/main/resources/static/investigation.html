@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Investigation | GridGain Payments Demo</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="shell">
+    <section class="hero hero-split">
+        <div>
+            <p class="eyebrow">GridGain Payments Demo</p>
+            <h1>AI investigation</h1>
+            <p class="lede">
+                Semantic payment search backed by MariaDB vectors.
+            </p>
+        </div>
+        <details class="page-menu">
+            <summary class="menu-trigger">
+                <span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>
+                <span class="sr-only">Open page menu</span>
+            </summary>
+            <nav class="page-menu__panel" aria-label="Pages">
+                <a class="menu-item" href="/">Dashboard</a>
+                <a class="menu-item" href="/flow.html">Transaction Flow</a>
+                <a class="menu-item active" href="/investigation.html" aria-current="page">AI Investigation</a>
+            </nav>
+        </details>
+    </section>
+
+    <section class="panel investigation-panel investigation-page-panel">
+        <div class="section-header">
+            <h2>Search Similar Payments</h2>
+            <span id="semanticMeta" class="muted">MariaDB vector search</span>
+        </div>
+        <form id="semanticForm" class="investigation-form">
+            <label for="semanticQuery">Investigation query</label>
+            <textarea id="semanticQuery" rows="4">suspicious high-value travel declines</textarea>
+            <div class="investigation-actions">
+                <button id="semanticSearch" type="submit">Search</button>
+                <span id="semanticStatus" class="muted">Waiting for a query</span>
+            </div>
+        </form>
+        <div id="semanticResults" class="semantic-results"></div>
+    </section>
+</main>
+
+<script src="/investigation.js"></script>
+</body>
+</html>

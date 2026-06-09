@@ -19,6 +19,7 @@ Small real-time card-transaction demo built with Java, Spring Boot, Oracle or Ma
 6. Start a simulator to generate authorize traffic, automatic captures, and occasional refunds.
 7. Watch live throughput, approval rate, declines by reason, top merchants, and suspicious payments at `http://localhost:8080`.
 8. Trigger a merchant outage or lower the fraud threshold from the dashboard and watch the metrics change immediately.
+9. Use the AI Investigation page to search for semantically similar payments with MariaDB vector search.
 
 ## Run
 
@@ -34,6 +35,18 @@ or:
 docker compose --env-file .env.mariadb up --build
 ```
 
+To include GridGain Control Center, add the Control Center compose file:
+
+```bash
+docker compose --env-file .env.oracle -f docker-compose.yml -f docker-compose.control-center.yml up --build
+```
+
+or:
+
+```bash
+docker compose --env-file .env.mariadb -f docker-compose.yml -f docker-compose.control-center.yml up --build
+```
+
 That starts:
 
 - Oracle Free on `localhost:1521` with `FREEPDB1`, or MariaDB on `localhost:3306` with `payments_app`
@@ -43,7 +56,7 @@ That starts:
 - Ten merchant simulator containers
 - The payment initiator and the external DB-to-GridGain CDC sink
 
-Then open `http://localhost:8080` or `http://localhost:8080/flow.html`.
+Then open `http://localhost:8080`, `http://localhost:8080/flow.html`, or `http://localhost:8080/investigation.html`. If you included Control Center, open `http://localhost:8008`.
 
 ## Run Without Compose
 
@@ -72,6 +85,7 @@ For a full local Debezium stack in this mode, you also need one external databas
 - `POST /api/simulator/stop`
 - `POST /api/admin/merchants/{merchantId}/status?active=false`
 - `POST /api/admin/fraud-threshold?value=68`
+- `POST /api/investigation/semantic`
 
 ## Example authorize request
 
