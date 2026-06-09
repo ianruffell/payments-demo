@@ -6,7 +6,9 @@ import com.example.paymentsdemo.domain.Merchant;
 import com.example.paymentsdemo.domain.RiskTier;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteDataStreamer;
 import org.springframework.context.annotation.Profile;
@@ -25,15 +27,27 @@ public class SeedDataLoader implements ApplicationRunner {
 
     private static final List<String> CURRENCIES = List.of("GBP", "EUR", "USD");
     private static final List<String> COUNTRIES = List.of("GB", "DE", "FR", "ES", "US", "NL", "NG", "BR");
-    private static final List<String> CATEGORIES = List.of(
-            "GROCERY",
-            "TRAVEL",
-            "FUEL",
-            "RETAIL",
-            "DIGITAL_GOODS",
-            "HEALTH",
-            "GAMBLING",
-            "CRYPTO"
+    private static final Pattern GENERIC_MERCHANT_NAME = Pattern.compile("Merchant \\d{5}");
+    private static final Map<String, List<String>> MERCHANT_NAMES_BY_CATEGORY = Map.of(
+            "GROCERY", List.of("Green Basket Market", "Pantry Harbor Foods"),
+            "TRAVEL", List.of("Skytrail Journeys", "Roamline Travel"),
+            "FUEL", List.of("Octane Bay Fuel", "Pump & Pilot"),
+            "RETAIL", List.of("Elm & Alloy Outfitters", "Cornerstone Goods"),
+            "DIGITAL_GOODS", List.of("Pixel Grove Downloads", "Cloudcrate Digital"),
+            "HEALTH", List.of("Vital Spring Pharmacy", "Carewell Clinic"),
+            "GAMBLING", List.of("Lucky Lantern Casino", "Jackpot Junction"),
+            "CRYPTO", List.of("Chainvault Exchange", "Blockhaven Markets")
+    );
+    private static final List<MerchantProfile> MERCHANT_PROFILES = List.of(
+            new MerchantProfile("Skytrail Journeys", "TRAVEL"),
+            new MerchantProfile("Jackpot Junction", "GAMBLING"),
+            new MerchantProfile("Green Basket Market", "GROCERY"),
+            new MerchantProfile("Cornerstone Goods", "RETAIL"),
+            new MerchantProfile("Lucky Lantern Casino", "GAMBLING"),
+            new MerchantProfile("Pixel Grove Downloads", "DIGITAL_GOODS"),
+            new MerchantProfile("Vital Spring Pharmacy", "HEALTH"),
+            new MerchantProfile("Octane Bay Fuel", "FUEL"),
+            new MerchantProfile("Chainvault Exchange", "CRYPTO")
     );
 
     private final Ignite ignite;
@@ -99,6 +113,7 @@ public class SeedDataLoader implements ApplicationRunner {
         }
 
         normalizeMerchantLimits();
+        normalizeGenericMerchantNames();
         systemOfRecordRepository.enableReferenceTableCdc();
         refreshReferenceCaches();
     }
@@ -155,10 +170,11 @@ public class SeedDataLoader implements ApplicationRunner {
         List<Merchant> batch = new ArrayList<>(250);
         for (int i = 1; i <= merchantCount; i++) {
             String merchantId = "MER-%05d".formatted(i);
+            MerchantProfile profile = merchantProfileFor(i);
             Merchant merchant = new Merchant(
                     merchantId,
-                    "Merchant %05d".formatted(i),
-                    randomOf(CATEGORIES),
+                    profile.name(),
+                    profile.category(),
                     randomOf(COUNTRIES),
                     true,
                     ThreadLocalRandom.current().nextLong(25_00, 15_000_00),
@@ -202,6 +218,30 @@ public class SeedDataLoader implements ApplicationRunner {
         }
     }
 
+    private void normalizeGenericMerchantNames() {
+        List<Merchant> merchants = systemOfRecordRepository.loadAllMerchants();
+        List<Merchant> updated = new ArrayList<>();
+
+        for (Merchant merchant : merchants) {
+            if (!isGenericMerchantName(merchant.getName())) {
+                continue;
+            }
+
+            String categoryName = merchantNameForCategory(merchant.getCategory(), merchant.getMerchantId());
+            if (categoryName.equals(merchant.getName())) {
+                continue;
+            }
+
+            merchant.setName(categoryName);
+            updated.add(merchant);
+        }
+
+        if (!updated.isEmpty()) {
+            systemOfRecordRepository.upsertMerchants(updated);
+            log.info("Renamed {} generic merchant(s) with category-specific names.", updated.size());
+        }
+    }
+
     private void refreshReferenceCaches() {
         ignite.cache(CacheNames.ACCOUNTS).removeAll();
         ignite.cache(CacheNames.MERCHANTS).removeAll();
@@ -236,7 +276,46 @@ public class SeedDataLoader implements ApplicationRunner {
         return values.get(ThreadLocalRandom.current().nextInt(values.size()));
     }
 
+    private MerchantProfile merchantProfileFor(int merchantIndex) {
+        MerchantProfile profile = MERCHANT_PROFILES.get(Math.floorMod(merchantIndex - 1, MERCHANT_PROFILES.size()));
+        if (merchantIndex <= MERCHANT_PROFILES.size()) {
+            return profile;
+        }
+
+        int sequence = ((merchantIndex - 1) / MERCHANT_PROFILES.size()) + 1;
+        return new MerchantProfile("%s %d".formatted(profile.name(), sequence), profile.category());
+    }
+
+    private boolean isGenericMerchantName(String name) {
+        return name != null && GENERIC_MERCHANT_NAME.matcher(name).matches();
+    }
+
+    private String merchantNameForCategory(String category, String merchantId) {
+        List<String> names = MERCHANT_NAMES_BY_CATEGORY.get(category);
+        if (names == null || names.isEmpty()) {
+            return merchantId;
+        }
+
+        int merchantIndex = merchantIndex(merchantId);
+        return names.get(Math.floorMod(merchantIndex - 1, names.size()));
+    }
+
+    private int merchantIndex(String merchantId) {
+        if (merchantId != null && merchantId.startsWith("MER-")) {
+            try {
+                return Integer.parseInt(merchantId.substring(4));
+            } catch (NumberFormatException e) {
+                log.debug("Could not parse merchant index from {}.", merchantId);
+            }
+        }
+
+        return 1;
+    }
+
     private String merchantUrlFor(int merchantIndex) {
         return merchantServiceUrlPattern.formatted(merchantIndex);
+    }
+
+    private record MerchantProfile(String name, String category) {
     }
 }

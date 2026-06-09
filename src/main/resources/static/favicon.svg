@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GridGain Payments Demo">
+  <rect width="64" height="64" rx="14" fill="#074f3a"/>
+  <path fill="#fbf8f0" d="M16 18h34v8H16zM16 28h10v18H16zM26 38h18v8H26z"/>
+  <path fill="#7fc27e" d="M42 28h8v18h-8z"/>
+  <circle cx="48" cy="18" r="5" fill="#b4472d"/>
+</svg>

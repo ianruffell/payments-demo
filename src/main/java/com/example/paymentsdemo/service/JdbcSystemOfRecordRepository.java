@@ -9,6 +9,7 @@ import com.example.paymentsdemo.domain.MerchantPaymentAttempt;
 import com.example.paymentsdemo.domain.Payment;
 import com.example.paymentsdemo.domain.PaymentStatus;
 import com.example.paymentsdemo.domain.RiskTier;
+import com.example.paymentsdemo.dto.SemanticInvestigationResult;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
@@ -67,6 +68,7 @@ public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final ExternalDatabaseType databaseType;
+    private volatile boolean semanticIndexSchemaChecked;
 
     public JdbcSystemOfRecordRepository(
             JdbcTemplate jdbcTemplate,
@@ -141,6 +143,8 @@ public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
                     CREATED_AT_EPOCH_MS $LONG NOT NULL
                 )
                 """));
+
+        ensureSemanticIndexTable();
     }
 
     @Override
@@ -175,6 +179,10 @@ public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
     @Transactional
     @Override
     public void resetDemoData() {
+        if (databaseType == ExternalDatabaseType.MARIADB) {
+            ensureSemanticIndexTable();
+            jdbcTemplate.update("DELETE FROM PAYMENT_SEMANTIC_INDEX");
+        }
         jdbcTemplate.update("DELETE FROM LEDGER_ENTRY_ARCHIVE");
         jdbcTemplate.update("DELETE FROM PAYMENT_ARCHIVE");
         jdbcTemplate.update("DELETE FROM MERCHANTS");
@@ -479,6 +487,125 @@ public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
     }
 
     @Override
+    public boolean supportsSemanticInvestigation() {
+        return databaseType == ExternalDatabaseType.MARIADB;
+    }
+
+    @Transactional
+    @Override
+    public void upsertPaymentSemanticIndex(SemanticPaymentIndexEntry entry) {
+        if (!supportsSemanticInvestigation()) {
+            return;
+        }
+        ensureSemanticIndexTable();
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO PAYMENT_SEMANTIC_INDEX (
+                    payment_id,
+                    summary,
+                    status,
+                    merchant_id,
+                    amount_minor,
+                    currency,
+                    fraud_score,
+                    suspicious,
+                    decline_reason,
+                    created_at_epoch_ms,
+                    source,
+                    updated_at_epoch_ms,
+                    embedding
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, VEC_FromText(?))
+                ON DUPLICATE KEY UPDATE
+                    summary = VALUES(summary),
+                    status = VALUES(status),
+                    merchant_id = VALUES(merchant_id),
+                    amount_minor = VALUES(amount_minor),
+                    currency = VALUES(currency),
+                    fraud_score = VALUES(fraud_score),
+                    suspicious = VALUES(suspicious),
+                    decline_reason = VALUES(decline_reason),
+                    created_at_epoch_ms = VALUES(created_at_epoch_ms),
+                    source = VALUES(source),
+                    updated_at_epoch_ms = VALUES(updated_at_epoch_ms),
+                    embedding = VALUES(embedding)
+                """,
+                entry.paymentId(),
+                entry.summary(),
+                entry.status().name(),
+                entry.merchantId(),
+                entry.amountMinor(),
+                entry.currency(),
+                entry.fraudScore(),
+                entry.suspicious() ? 1 : 0,
+                entry.declineReason(),
+                entry.createdAtEpochMs(),
+                entry.source(),
+                System.currentTimeMillis(),
+                entry.embeddingJson()
+        );
+    }
+
+    @Override
+    public List<SemanticInvestigationResult> searchSimilarPayments(String embeddingJson, int limit) {
+        if (!supportsSemanticInvestigation()) {
+            return List.of();
+        }
+        ensureSemanticIndexTable();
+
+        return jdbcTemplate.query(
+                """
+                SELECT payment_id,
+                       summary,
+                       status,
+                       merchant_id,
+                       amount_minor,
+                       currency,
+                       fraud_score,
+                       suspicious,
+                       decline_reason,
+                       created_at_epoch_ms,
+                       source,
+                       VEC_DISTANCE_COSINE(embedding, VEC_FromText(?)) AS distance
+                FROM PAYMENT_SEMANTIC_INDEX
+                ORDER BY distance
+                LIMIT ?
+                """,
+                (rs, ignored) -> {
+                    double distance = rs.getDouble("distance");
+                    double relevancePercent = Math.max(0.0, Math.min(100.0, (1.0 - distance) * 100.0));
+                    return new SemanticInvestigationResult(
+                            rs.getString("payment_id"),
+                            rs.getString("summary"),
+                            rs.getString("status"),
+                            rs.getString("merchant_id"),
+                            rs.getLong("amount_minor"),
+                            rs.getString("currency"),
+                            rs.getDouble("fraud_score"),
+                            rs.getInt("suspicious") == 1,
+                            rs.getString("decline_reason"),
+                            rs.getLong("created_at_epoch_ms"),
+                            rs.getString("source"),
+                            distance,
+                            relevancePercent
+                    );
+                },
+                embeddingJson,
+                limit
+        );
+    }
+
+    @Override
+    public long semanticPaymentIndexCount() {
+        if (!supportsSemanticInvestigation()) {
+            return 0;
+        }
+        ensureSemanticIndexTable();
+
+        return queryForLong("SELECT COUNT(*) FROM PAYMENT_SEMANTIC_INDEX");
+    }
+
+    @Override
     public void enableReferenceTableCdc() {
         if (databaseType != ExternalDatabaseType.ORACLE) {
             return;
@@ -499,6 +626,62 @@ public class JdbcSystemOfRecordRepository implements SystemOfRecordRepository {
                 .replace("$LONG", longType)
                 .replace("$BOOLEAN", booleanType)
                 .replace("$DECIMAL", decimalType);
+    }
+
+    private void ensureSemanticIndexTable() {
+        if (!supportsSemanticInvestigation() || semanticIndexSchemaChecked) {
+            return;
+        }
+
+        synchronized (this) {
+            if (semanticIndexSchemaChecked) {
+                return;
+            }
+            executeDdl(semanticIndexDdl());
+            if (!semanticIndexTableExists()) {
+                log.warn("MariaDB semantic index table was reported as existing but is not visible; recreating it.");
+                executeOptionalSql("DROP TABLE IF EXISTS PAYMENT_SEMANTIC_INDEX");
+                executeDdl(semanticIndexDdl());
+            }
+            if (!semanticIndexTableExists()) {
+                throw new IllegalStateException("MariaDB semantic index table is not available after schema initialization.");
+            }
+            semanticIndexSchemaChecked = true;
+        }
+    }
+
+    private boolean semanticIndexTableExists() {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.TABLES
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'PAYMENT_SEMANTIC_INDEX'
+                """,
+                Long.class
+        );
+        return count != null && count > 0;
+    }
+
+    private String semanticIndexDdl() {
+        return """
+                CREATE TABLE PAYMENT_SEMANTIC_INDEX (
+                    PAYMENT_ID VARCHAR(64) CHARACTER SET ascii PRIMARY KEY,
+                    SUMMARY TEXT NOT NULL,
+                    STATUS VARCHAR(32) NOT NULL,
+                    MERCHANT_ID VARCHAR(64) NOT NULL,
+                    AMOUNT_MINOR BIGINT NOT NULL,
+                    CURRENCY VARCHAR(8) NOT NULL,
+                    FRAUD_SCORE DECIMAL(10,4) NOT NULL,
+                    SUSPICIOUS TINYINT NOT NULL,
+                    DECLINE_REASON VARCHAR(128),
+                    CREATED_AT_EPOCH_MS BIGINT NOT NULL,
+                    SOURCE VARCHAR(32) NOT NULL,
+                    UPDATED_AT_EPOCH_MS BIGINT NOT NULL,
+                    EMBEDDING VECTOR(64) NOT NULL,
+                    VECTOR INDEX (EMBEDDING) M=8 DISTANCE=cosine
+                )
+                """;
     }
 
     private String accountUpsertSql() {

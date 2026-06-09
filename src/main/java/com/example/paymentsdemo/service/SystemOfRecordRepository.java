@@ -5,6 +5,7 @@ import com.example.paymentsdemo.domain.LedgerEntry;
 import com.example.paymentsdemo.domain.Merchant;
 import com.example.paymentsdemo.domain.MerchantPaymentAttempt;
 import com.example.paymentsdemo.domain.Payment;
+import com.example.paymentsdemo.dto.SemanticInvestigationResult;
 import java.util.List;
 
 public interface SystemOfRecordRepository {
@@ -44,6 +45,14 @@ public interface SystemOfRecordRepository {
             MerchantPaymentAttempt attempt,
             List<LedgerEntry> ledgerEntries
     );
+
+    boolean supportsSemanticInvestigation();
+
+    void upsertPaymentSemanticIndex(SemanticPaymentIndexEntry entry);
+
+    List<SemanticInvestigationResult> searchSimilarPayments(String embeddingJson, int limit);
+
+    long semanticPaymentIndexCount();
 
     void enableReferenceTableCdc();
 }
