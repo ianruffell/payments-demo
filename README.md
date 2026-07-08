@@ -49,7 +49,8 @@ docker compose --env-file .env.mariadb -f docker-compose.yml -f docker-compose.c
 
 That starts:
 
-- Oracle Free on `localhost:1521` with `FREEPDB1`, or MariaDB on `localhost:3306` with `payments_app`
+- Oracle Free on `localhost:1521` with `FREEPDB1`, or a three-node MariaDB Galera cluster with MaxScale SQL listeners on `localhost:4006` and `localhost:4007`
+- MaxScale admin/UI on `http://localhost:8989` and `http://localhost:8990` when running the MariaDB profile
 - Kafka and Kafka Connect with the matching Debezium connector
 - A three-node GridGain cluster
 - The Spring Boot processor on `http://localhost:8080`
@@ -69,9 +70,11 @@ export DEMO_GRIDGAIN_DISCOVERY_ADDRESSES_1=10.0.0.12:47500..47509
 mvn spring-boot:run
 ```
 
+For the MariaDB profile, the compose stack uses MariaDB Enterprise images from `docker.mariadb.com`. Log in to that registry before starting it if Docker does not already have credentials.
+
 For a full local Debezium stack in this mode, you also need one external database configured through Spring properties:
 
-- Oracle reachable at `jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1` with `demo.external-db.type=oracle`, or MariaDB reachable at `jdbc:mariadb://mariadb:3306/payments_app` with `demo.external-db.type=mariadb`
+- Oracle reachable at `jdbc:oracle:thin:@//oracle-db:1521/FREEPDB1` with `demo.external-db.type=oracle`, or MariaDB reachable through MaxScale at `jdbc:mariadb://maxscale1:3306/payments_app` with `demo.external-db.type=mariadb`
 - Kafka reachable at `kafka:9092`
 - A Kafka Connect worker with the matching Debezium connector; Oracle also requires `ojdbc11.jar`
 

@@ -1,0 +1,41 @@
+[maxscale]
+threads = auto
+admin_host = 0.0.0.0
+admin_port = 8989
+admin_secure_gui = false
+
+[db1]
+type = server
+address = db1
+port = 3306
+
+[db2]
+type = server
+address = db2
+port = 3306
+
+[db3]
+type = server
+address = db3
+port = 3306
+
+[galera-monitor]
+type = monitor
+module = galeramon
+servers = db1,db2,db3
+user = maxscale_monitor
+password = MaxScaleMonitor123!
+monitor_interval = 2s
+
+[rw-service]
+type = service
+router = readwritesplit
+servers = db1,db2,db3
+user = maxscale_service
+password = MaxScaleService123!
+
+[rw-listener]
+type = listener
+service = rw-service
+protocol = MariaDBClient
+port = 3306
