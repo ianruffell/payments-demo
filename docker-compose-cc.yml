@@ -1,0 +1,37 @@
+name: gridgain-cc
+
+# Starts the databases.
+# To reload the sample data from scratch, run:
+#   docker compose down -v
+#   docker compose up -d
+
+services:
+
+  control-center-backend:
+    image: gridgain/control-center-backend:latest
+    restart: on-failure
+    environment:
+      # Tune JVM options for Control Center if needed
+      - JVM_OPTS=
+    networks:
+      - gridgain-cc
+    ports:
+      # HOST:CONTAINER
+      - "3000:3000"
+
+  control-center-frontend:
+    image: gridgain/control-center-frontend:latest
+    depends_on:
+      - control-center-backend
+    volumes:
+      # Nginx config for routing UI -> backend
+      - ./src/main/resources/control-center.conf:/etc/nginx/control-center.conf
+    networks:
+      - gridgain-cc
+    ports:
+      # HOST:CONTAINER
+      - "8008:8008"
+
+networks:
+  gridgain-cc:
+    name: gridgain-cc
