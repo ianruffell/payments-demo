@@ -1,0 +1,16 @@
+[mariadb]
+bind_address = 0.0.0.0
+server_id = 102
+log_bin = mariadb-bin
+binlog_format = ROW
+binlog_row_image = FULL
+default_storage_engine = InnoDB
+innodb_autoinc_lock_mode = 2
+
+wsrep_on = ON
+wsrep_provider = /usr/lib64/galera/libgalera_enterprise_smm.so
+wsrep_cluster_name = mariadb-galera
+wsrep_cluster_address = gcomm://db1,db2,db3
+wsrep_node_name = db2
+wsrep_node_address = db2
+wsrep_sst_method = rsync

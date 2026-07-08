@@ -14,6 +14,13 @@ x-gridgain-def:
     JVM_MAX_MEM: "2g"
     JVM_MIN_MEM: "1g"
     CONFIG_URI: "/opt/gridgain/etc/ignite-config.xml"
+    OPTION_LIBS: ignite-indexing,control-center-agent
+    JVM_OPTS: >-
+      -Djava.net.preferIPv4Stack=true
+      -Dcontrol.center.agent.uris=http://control-center-backend:3000
+  networks:
+    - gridgain
+    - gridgain-cc
   volumes:
     - ./gridgain-license.xml:/opt/gridgain/gridgain-license.xml
     - ./src/main/resources/ignite-config.xml:/opt/gridgain/etc/ignite-config.xml
@@ -33,58 +40,152 @@ services:
       timeout: 5s
       retries: 20
       start_period: 30s
+    networks:
+      - gridgain
     ports:
       - "1521:1521"
     volumes:
       - oracle-data:/opt/oracle/oradata
       - ./oracle/init:/container-entrypoint-initdb.d:ro
 
-  mariadb:
-    image: mariadb:11.8
+  db1:
+    image: ${MARIADB_SERVER_IMAGE:-docker.mariadb.com/enterprise-server:latest}
     profiles:
       - mariadb
+    hostname: db1
     command:
-      - --server-id=184054
-      - --log-bin=mariadb-bin
-      - --binlog-format=ROW
-      - --binlog-row-image=FULL
+      - --wsrep-new-cluster
     environment:
-      MARIADB_ROOT_PASSWORD: mariadb
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
       MARIADB_DATABASE: payments_app
       MARIADB_USER: payments_app
-      MARIADB_PASSWORD: payments_app
+      MARIADB_PASSWORD: ${MARIADB_APP_PASSWORD:-PaymentsApp123!}
+      SKIP_INIT_WSREP_OFF: "1"
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect"]
+      test:
+        - CMD-SHELL
+        - mariadb --protocol=TCP -h 127.0.0.1 -uroot -p"$${MARIADB_ROOT_PASSWORD}" -e "SELECT 1"
       interval: 10s
       timeout: 5s
       retries: 20
-      start_period: 20s
-    ports:
-      - "3306:3306"
+      start_period: 40s
+    networks:
+      - gridgain
     volumes:
-      - mariadb-data:/var/lib/mysql
+      - db1-data:/var/lib/mysql
+      - ./mariadb/db1.cnf:/etc/my.cnf.d/60-galera.cnf:ro
       - ./mariadb/init:/docker-entrypoint-initdb.d:ro
 
-  metabase:
-    image: metabase/metabase:latest
+  db2:
+    image: ${MARIADB_SERVER_IMAGE:-docker.mariadb.com/enterprise-server:latest}
     profiles:
       - mariadb
-    depends_on:
-      mariadb:
-        condition: service_healthy
+    hostname: db2
     environment:
-      MB_DB_TYPE: mysql
-      MB_DB_HOST: mariadb
-      MB_DB_PORT: 3306
-      MB_DB_DBNAME: metabase
-      MB_DB_USER: metabase
-      MB_DB_PASS: metabase
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
+    depends_on:
+      db1:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mariadb --protocol=TCP -h 127.0.0.1 -uroot -p"$${MARIADB_ROOT_PASSWORD}" -e "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    networks:
+      - gridgain
+    volumes:
+      - db2-data:/var/lib/mysql
+      - ./mariadb/db2.cnf:/etc/my.cnf.d/60-galera.cnf:ro
+
+  db3:
+    image: ${MARIADB_SERVER_IMAGE:-docker.mariadb.com/enterprise-server:latest}
+    profiles:
+      - mariadb
+    hostname: db3
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
+    depends_on:
+      db1:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mariadb --protocol=TCP -h 127.0.0.1 -uroot -p"$${MARIADB_ROOT_PASSWORD}" -e "SELECT 1"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    networks:
+      - gridgain
+    volumes:
+      - db3-data:/var/lib/mysql
+      - ./mariadb/db3.cnf:/etc/my.cnf.d/60-galera.cnf:ro
+
+  maxscale1:
+    image: ${MAXSCALE_IMAGE:-docker.mariadb.com/maxscale:latest}
+    profiles:
+      - mariadb
+    hostname: maxscale1
+    depends_on:
+      db1:
+        condition: service_healthy
+      db2:
+        condition: service_healthy
+      db3:
+        condition: service_healthy
+    networks:
+      - gridgain
     ports:
-      - "3000:3000"
+      - "4006:3306"
+      - "8989:8989"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS -u admin:mariadb http://127.0.0.1:8989/v1/servers >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     restart: on-failure
+    volumes:
+      - ./maxscale/maxscale.cnf:/etc/maxscale.cnf:ro
+
+  maxscale2:
+    image: ${MAXSCALE_IMAGE:-docker.mariadb.com/maxscale:latest}
+    profiles:
+      - mariadb
+    hostname: maxscale2
+    depends_on:
+      db1:
+        condition: service_healthy
+      db2:
+        condition: service_healthy
+      db3:
+        condition: service_healthy
+    networks:
+      - gridgain
+    ports:
+      - "4007:3306"
+      - "8990:8989"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS -u admin:mariadb http://127.0.0.1:8989/v1/servers >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: on-failure
+    volumes:
+      - ./maxscale/maxscale.cnf:/etc/maxscale.cnf:ro
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
+    networks:
+      - gridgain
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -102,6 +203,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    networks:
+      - gridgain
     ports:
       - "29092:29092"
     restart: on-failure
@@ -122,6 +225,8 @@ services:
       VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    networks:
+      - gridgain
     ports:
       - "8083:8083"
     restart: on-failure
@@ -136,6 +241,8 @@ services:
       - payments-demo-app
     command: ["/bin/sh", "/scripts/register-oracle-connector.sh"]
     restart: on-failure
+    networks:
+      - gridgain
     volumes:
       - ./oracle/register-oracle-connector.sh:/scripts/register-oracle-connector.sh:ro
       - ./oracle/oracle-source-connector.json:/config/oracle-source-connector.json:ro
@@ -145,11 +252,16 @@ services:
     profiles:
       - mariadb
     depends_on:
-      - debezium-connect
-      - mariadb
-      - payments-demo-app
+      debezium-connect:
+        condition: service_started
+      maxscale1:
+        condition: service_healthy
+      payments-demo-app:
+        condition: service_started
     command: ["/bin/sh", "/scripts/register-mariadb-connector.sh"]
     restart: on-failure
+    networks:
+      - gridgain
     volumes:
       - ./mariadb/register-mariadb-connector.sh:/scripts/register-mariadb-connector.sh:ro
       - ./mariadb/mariadb-source-connector.json:/config/mariadb-source-connector.json:ro
@@ -193,6 +305,8 @@ services:
       DEMO_MERCHANT_APPROVAL_RATE: 0.98
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1400000
     restart: on-failure
+    networks:
+      - gridgain
 
   merchant-00002:
     build:
@@ -211,6 +325,8 @@ services:
       DEMO_MERCHANT_APPROVAL_RATE: 0.97
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1250000
     restart: on-failure
+    networks:
+      - gridgain
 
   merchant-00003:
     build:
@@ -229,6 +345,8 @@ services:
       DEMO_MERCHANT_APPROVAL_RATE: 0.96
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1100000
     restart: on-failure
+    networks:
+      - gridgain
 
   merchant-00004:
     build:
@@ -247,6 +365,8 @@ services:
       DEMO_MERCHANT_APPROVAL_RATE: 0.95
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 1000000
     restart: on-failure
+    networks:
+      - gridgain
 
   merchant-00005:
     build:
@@ -265,6 +385,8 @@ services:
       DEMO_MERCHANT_APPROVAL_RATE: 0.95
       DEMO_MERCHANT_DECLINE_ABOVE_MINOR: 950000
     restart: on-failure
+    networks:
+      - gridgain
 
   payments-demo-initiator:
     build:
@@ -287,6 +409,8 @@ services:
       DEMO_GRIDGAIN_LICENSE_URL: /app/gridgain-license.xml
       DEMO_PROCESSOR_BASE_URL: http://payments-demo-app:8080
     restart: on-failure
+    networks:
+      - gridgain
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
 
@@ -318,6 +442,8 @@ services:
       DEMO_EXTERNAL_DB_CDC_CONNECTOR_NAME: ${DEMO_EXTERNAL_DB_CDC_CONNECTOR_NAME}
       DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
       DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
+    networks:
+      - gridgain
     ports:
       - "8080:8080"
     restart: on-failure
@@ -347,6 +473,8 @@ services:
       DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
       DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
     restart: on-failure
+    networks:
+      - gridgain
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
 
@@ -373,9 +501,19 @@ services:
       DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC}
       DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC: ${DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC}
     restart: on-failure
+    networks:
+      - gridgain
     volumes:
       - ./gridgain-license.xml:/app/gridgain-license.xml:ro
 
 volumes:
   oracle-data:
-  mariadb-data:
+  db1-data:
+  db2-data:
+  db3-data:
+
+networks:
+  gridgain:
+    name: gridgain
+  gridgain-cc:
+    name: gridgain-cc

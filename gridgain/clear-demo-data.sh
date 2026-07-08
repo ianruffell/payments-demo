@@ -6,13 +6,14 @@ DOCKER_BIN="${DOCKER_BIN:-docker}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 EXTERNAL_DB_TYPE="${DEMO_EXTERNAL_DB_TYPE:-${EXTERNAL_DB_TYPE:-oracle}}"
 ORACLE_SERVICE="${ORACLE_SERVICE:-oracle-db}"
-MARIADB_SERVICE="${MARIADB_SERVICE:-mariadb}"
+MARIADB_CLIENT_SERVICE="${MARIADB_CLIENT_SERVICE:-${MARIADB_SERVICE:-db1}}"
+MARIADB_HOST="${MARIADB_HOST:-maxscale1}"
 GRIDGAIN_SERVICE="${GRIDGAIN_SERVICE:-gg8-node1}"
 APP_BASE_URL="${APP_BASE_URL:-http://localhost:8080}"
 ORACLE_CONNECT="${ORACLE_CONNECT:-PAYMENTS_APP/payments_app@//localhost:1521/FREEPDB1}"
 MARIADB_DATABASE="${MARIADB_DATABASE:-payments_app}"
 MARIADB_USERNAME="${MARIADB_USERNAME:-payments_app}"
-MARIADB_PASSWORD="${MARIADB_PASSWORD:-payments_app}"
+MARIADB_PASSWORD="${MARIADB_PASSWORD:-PaymentsApp123!}"
 SQLLINE_BIN="${SQLLINE_BIN:-/opt/gridgain/bin/sqlline.sh}"
 SQLLINE_URL="${SQLLINE_URL:-jdbc:ignite:thin://127.0.0.1:10800}"
 CLEAR_ARCHIVE="${CLEAR_ARCHIVE:-false}"
@@ -47,7 +48,7 @@ external_db_service() {
             echo "${ORACLE_SERVICE}"
             ;;
         mariadb)
-            echo "${MARIADB_SERVICE}"
+            echo "${MARIADB_CLIENT_SERVICE}"
             ;;
         *)
             echo "Unsupported EXTERNAL_DB_TYPE: ${EXTERNAL_DB_TYPE}" >&2
@@ -74,8 +75,8 @@ EXIT;
 SQL"
             ;;
         mariadb)
-            echo "Clearing MariaDB archive tables in ${MARIADB_SERVICE}..."
-            compose exec -T "${MARIADB_SERVICE}" sh -lc "cat <<'SQL' | mariadb -u'${MARIADB_USERNAME}' -p'${MARIADB_PASSWORD}' '${MARIADB_DATABASE}'
+            echo "Clearing MariaDB archive tables through ${MARIADB_HOST} using ${MARIADB_CLIENT_SERVICE}..."
+            compose exec -T "${MARIADB_CLIENT_SERVICE}" sh -lc "cat <<'SQL' | mariadb --protocol=TCP --ssl=0 -h'${MARIADB_HOST}' -u'${MARIADB_USERNAME}' -p'${MARIADB_PASSWORD}' '${MARIADB_DATABASE}'
 DELETE FROM LEDGER_ENTRY_ARCHIVE;
 DELETE FROM PAYMENT_ARCHIVE;
 SQL"

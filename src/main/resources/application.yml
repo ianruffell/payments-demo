@@ -19,9 +19,9 @@ demo:
     merchant-service-url-pattern: http://merchant-%05d:8080/api/merchant/payments
   external-db:
     type: mariadb
-    jdbc-url: jdbc:mariadb://mariadb:3306/payments_app
+    jdbc-url: jdbc:mariadb://maxscale1:3306/payments_app
     username: payments_app
-    password: payments_app
+    password: PaymentsApp123!
     archive:
       poll-interval-ms: 1000
       captured-retention-ms: 15000
