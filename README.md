@@ -69,7 +69,7 @@ decision, so scoring is personalized from a customer's first transaction and sta
 Payments that cross the threshold are declined with reason `AI_FRAUD_BLOCK` and never reach a
 merchant; they appear as "declined before merchant" in the transaction-flow view.
 
-Settings (`demo.fraud.ai.*` in `application.yml`): `threshold` (default 80), `history-size`
+Settings (`demo.fraud.ai.*` in `application.yml`): `threshold` (default 75), `history-size`
 (default 20), `fail-policy` (`fail-open` default — on model/context failure the payment falls
 back to the legacy heuristic instead of being blocked; `fail-closed` rejects), and `model`
 (`local`, a deterministic in-process model pluggable behind the `FraudModel` interface).

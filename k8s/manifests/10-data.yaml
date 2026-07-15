@@ -138,6 +138,19 @@ spec:
     - { name: client, port: 10800, targetPort: 10800 }
     - { name: metrics, port: 9404, targetPort: 9404 }
 ---
+# NodePort for the GridGain thin-client/SQL connector (10800), so it can be reached from the
+# host (via a socat proxy) for JDBC / SQL tools / thin clients.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gridgain-client
+  namespace: payments-demo
+spec:
+  type: NodePort
+  selector: { app: gridgain }
+  ports:
+    - { name: client, port: 10800, targetPort: 10800, nodePort: 30800 }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

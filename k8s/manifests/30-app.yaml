@@ -25,7 +25,7 @@ spec:
                until nc -z kafka 9092; do echo wait kafka; sleep 3; done"
       containers:
         - name: app
-          image: gridgain-payments-demo-app:s011b
+          image: gridgain-payments-demo-app:s011c
           imagePullPolicy: IfNotPresent
           env:
             # JAVA_TOOL_OPTIONS is intentionally NOT set here: the image already sets it with the

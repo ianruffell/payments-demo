@@ -42,7 +42,7 @@ public class FraudDetectionService {
     public FraudDetectionService(
             CustomerContextService customerContextService,
             FraudService fraudService,
-            @Value("${demo.fraud.ai.threshold:80.0}") double threshold,
+            @Value("${demo.fraud.ai.threshold:75.0}") double threshold,
             @Value("${demo.fraud.ai.fail-policy:fail-open}") String failPolicy,
             @Value("${demo.fraud.ai.model:local}") String modelName
     ) {

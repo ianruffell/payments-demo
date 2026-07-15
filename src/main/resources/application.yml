@@ -57,7 +57,7 @@ demo:
   fraud:
     threshold: 84.0
     ai:
-      threshold: 80.0
+      threshold: 75.0
       history-size: 20
       fail-policy: fail-open
       model: local
