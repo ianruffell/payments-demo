@@ -1,0 +1,16 @@
+# Grafana dashboard provider (spec 010). Loads every *.json dashboard in this directory
+# into a "Payments Demo" folder on startup, so dashboards are provisioned as code.
+apiVersion: 1
+
+providers:
+  - name: payments-demo
+    orgId: 1
+    folder: Payments Demo
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 15
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

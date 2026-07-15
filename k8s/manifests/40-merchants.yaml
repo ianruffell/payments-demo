@@ -1,0 +1,153 @@
+# Merchant simulators. The processor dispatches to http://merchant-<NNNNN>:8080, so each
+# merchant needs a Service named merchant-0000N. These do not run a GridGain client
+# (@Profile("!merchant-simulator")).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-00001
+  namespace: payments-demo
+  labels: { app: merchant-00001, role: merchant-simulator }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: merchant-00001 } }
+  template:
+    metadata:
+      labels: { app: merchant-00001, role: merchant-simulator }
+    spec:
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: "merchant-simulator" }
+            - { name: DEMO_MERCHANT_ID, value: "MER-00001" }
+            - { name: DEMO_MERCHANT_NAME, value: "Skytrail Journeys" }
+            - { name: DEMO_MERCHANT_CALLBACK_URL, value: "http://payments-demo-app:8080/api/merchant-results" }
+            - { name: DEMO_MERCHANT_MIN_DELAY_MS, value: "350" }
+            - { name: DEMO_MERCHANT_MAX_DELAY_MS, value: "2400" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS, value: "11000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS, value: "13000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_PROBABILITY, value: "0.02" }
+            - { name: DEMO_MERCHANT_APPROVAL_RATE, value: "0.98" }
+            - { name: DEMO_MERCHANT_DECLINE_ABOVE_MINOR, value: "1400000" }
+          ports:
+            - { containerPort: 8080 }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 24
+          resources:
+            requests: { cpu: "75m", memory: "256Mi" }
+            limits: { memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-00001
+  namespace: payments-demo
+spec:
+  selector: { app: merchant-00001 }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-00002
+  namespace: payments-demo
+  labels: { app: merchant-00002, role: merchant-simulator }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: merchant-00002 } }
+  template:
+    metadata:
+      labels: { app: merchant-00002, role: merchant-simulator }
+    spec:
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: "merchant-simulator" }
+            - { name: DEMO_MERCHANT_ID, value: "MER-00002" }
+            - { name: DEMO_MERCHANT_NAME, value: "Harbourline Retail" }
+            - { name: DEMO_MERCHANT_CALLBACK_URL, value: "http://payments-demo-app:8080/api/merchant-results" }
+            - { name: DEMO_MERCHANT_MIN_DELAY_MS, value: "350" }
+            - { name: DEMO_MERCHANT_MAX_DELAY_MS, value: "2400" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS, value: "11000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS, value: "13000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_PROBABILITY, value: "0.02" }
+            - { name: DEMO_MERCHANT_APPROVAL_RATE, value: "0.97" }
+            - { name: DEMO_MERCHANT_DECLINE_ABOVE_MINOR, value: "1400000" }
+          ports:
+            - { containerPort: 8080 }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 24
+          resources:
+            requests: { cpu: "75m", memory: "256Mi" }
+            limits: { memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-00002
+  namespace: payments-demo
+spec:
+  selector: { app: merchant-00002 }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-00003
+  namespace: payments-demo
+  labels: { app: merchant-00003, role: merchant-simulator }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: merchant-00003 } }
+  template:
+    metadata:
+      labels: { app: merchant-00003, role: merchant-simulator }
+    spec:
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: "merchant-simulator" }
+            - { name: DEMO_MERCHANT_ID, value: "MER-00003" }
+            - { name: DEMO_MERCHANT_NAME, value: "Nordwave Electronics" }
+            - { name: DEMO_MERCHANT_CALLBACK_URL, value: "http://payments-demo-app:8080/api/merchant-results" }
+            - { name: DEMO_MERCHANT_MIN_DELAY_MS, value: "350" }
+            - { name: DEMO_MERCHANT_MAX_DELAY_MS, value: "2400" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MIN_MS, value: "11000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_DELAY_MAX_MS, value: "13000" }
+            - { name: DEMO_MERCHANT_TIMEOUT_PROBABILITY, value: "0.03" }
+            - { name: DEMO_MERCHANT_APPROVAL_RATE, value: "0.96" }
+            - { name: DEMO_MERCHANT_DECLINE_ABOVE_MINOR, value: "1400000" }
+          ports:
+            - { containerPort: 8080 }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 24
+          resources:
+            requests: { cpu: "75m", memory: "256Mi" }
+            limits: { memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-00003
+  namespace: payments-demo
+spec:
+  selector: { app: merchant-00003 }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

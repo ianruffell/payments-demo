@@ -1,0 +1,43 @@
+# jmx_exporter config for GridGain / Apache Ignite (spec 010).
+# Ignite registers metric MBeans under domain org.apache.<instance-hash> (the hash varies per
+# node, so patterns match org.apache.\w+). JmxMetricExporterSpi (set in ignite-config) publishes
+# the metric framework; these rules rename the relevant beans to the gridgain_* series the
+# Grafana dashboard queries.
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+startDelaySeconds: 10
+
+# No whitelistObjectNames: it was excluding the Ignite beans. With `rules` defined, any
+# attribute not matched by a rule is dropped, so output stays limited to the renamed metrics.
+rules:
+  # Cluster: total server nodes (bean :name=cluster).
+  - pattern: 'org\.apache\.\w+<name=cluster><>TotalServerNodes'
+    name: gridgain_cluster_total_server_nodes
+    type: GAUGE
+    help: "Total GridGain server nodes"
+
+  # Per-cache entry count and hit/miss (bean :group=cache,name="<cache>").
+  - pattern: 'org\.apache\.\w+<group=cache, name="(.+)"><>CacheSize'
+    name: gridgain_cache_size
+    type: GAUGE
+    labels: { cache: "$1" }
+  - pattern: 'org\.apache\.\w+<group=cache, name="(.+)"><>CacheHits'
+    name: gridgain_cache_hits
+    type: COUNTER
+    labels: { cache: "$1" }
+  - pattern: 'org\.apache\.\w+<group=cache, name="(.+)"><>CacheMisses'
+    name: gridgain_cache_misses
+    type: COUNTER
+    labels: { cache: "$1" }
+
+  # Off-heap usage per data region (bean :group=DataRegionMetrics,name=<region>).
+  - pattern: 'org\.apache\.\w+<group=DataRegionMetrics, name=(.+)><>OffHeapSize'
+    name: gridgain_data_region_offheap_used_bytes
+    type: GAUGE
+    labels: { region: "$1" }
+
+  # Transactions committed (bean :group=TransactionMetrics).
+  - pattern: 'org\.apache\.\w+<group=TransactionMetrics, name=.+><>TransactionsCommittedNumber'
+    name: gridgain_transactions_committed_total
+    type: COUNTER
+  # No catch-all: with rules defined, unmatched attributes are dropped, keeping output minimal.

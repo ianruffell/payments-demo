@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments-demo
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: payments-secret
+  namespace: payments-demo
+type: Opaque
+stringData:
+  mariadb-root-password: "SuperSecretRoot123!"
+  app-db-password: "PaymentsApp123!"

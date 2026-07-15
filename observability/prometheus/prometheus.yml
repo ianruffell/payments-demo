@@ -1,0 +1,37 @@
+# Prometheus scrape configuration for the GridGain Payments Demo (spec 010).
+# Targets are compose service names on the `gridgain` network.
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  # Application processor: Micrometer/Actuator Prometheus endpoint (payments-flow metrics + JVM).
+  - job_name: app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['payments-demo-app:8080']
+        labels:
+          component: processor
+
+  # MariaDB: one mysqld_exporter per Galera node (includes wsrep/Galera status).
+  - job_name: mariadb
+    static_configs:
+      - targets: ['mysqld-exporter-db1:9104']
+        labels: { instance: 'db1' }
+      - targets: ['mysqld-exporter-db2:9104']
+        labels: { instance: 'db2' }
+      - targets: ['mysqld-exporter-db3:9104']
+        labels: { instance: 'db3' }
+
+  # GridGain: jmx_exporter java agent on each cache/compute node.
+  - job_name: gridgain
+    static_configs:
+      - targets:
+          - 'gg8-node1:9404'
+          - 'gg8-node2:9404'
+          - 'gg8-node3:9404'
+
+  # Debezium / Kafka Connect: jmx_exporter java agent on the Connect worker.
+  - job_name: debezium-connect
+    static_configs:
+      - targets: ['debezium-connect:9404']

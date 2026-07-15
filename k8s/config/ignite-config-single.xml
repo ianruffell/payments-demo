@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- Single-node GridGain server configuration for the kind deployment (spec 009). -->
+    <bean class="org.apache.ignite.configuration.IgniteConfiguration">
+        <property name="localHost" value="0.0.0.0"/>
+        <!-- Must match the application client (which leaves this at the default false). -->
+        <property name="peerClassLoadingEnabled" value="false"/>
+        <property name="metricsLogFrequency" value="0"/>
+
+        <!-- Export the Ignite metric framework to OpenCensus (spec 010). -->
+        <property name="metricExporterSpi">
+            <list>
+                <bean class="org.apache.ignite.spi.metric.opencensus.OpenCensusMetricExporterSpi">
+                    <property name="period" value="10000"/>
+                </bean>
+            </list>
+        </property>
+
+        <!-- Starts the OpenCensus -> Prometheus HTTP endpoint on :9404 once the node is up. -->
+        <property name="lifecycleBeans">
+            <list>
+                <bean class="com.example.gg.PrometheusLifecycleBean"/>
+            </list>
+        </property>
+
+        <property name="discoverySpi">
+            <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+                <property name="localPort" value="47500"/>
+                <property name="localPortRange" value="0"/>
+                <property name="ipFinder">
+                    <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
+                        <property name="addresses">
+                            <list>
+                                <value>127.0.0.1:47500</value>
+                            </list>
+                        </property>
+                    </bean>
+                </property>
+            </bean>
+        </property>
+
+        <property name="communicationSpi">
+            <bean class="org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi">
+                <property name="localPort" value="47100"/>
+                <property name="localPortRange" value="0"/>
+            </bean>
+        </property>
+
+        <property name="clientConnectorConfiguration">
+            <bean class="org.apache.ignite.configuration.ClientConnectorConfiguration">
+                <property name="host" value="0.0.0.0"/>
+                <property name="port" value="10800"/>
+            </bean>
+        </property>
+    </bean>
+</beans>

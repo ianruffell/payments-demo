@@ -1,0 +1,50 @@
+# jmx_exporter agent config for the Kafka Connect worker running Debezium (spec 010).
+#
+# Produces the debezium_metrics_* and kafka_connect_* series used by the Debezium/CDC
+# Grafana dashboard. Debezium exposes connector metrics under the `debezium.*` JMX domains
+# (context = snapshot | streaming), and Kafka Connect under `kafka.connect`.
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+startDelaySeconds: 15
+
+whitelistObjectNames:
+  - "debezium.*:type=connector-metrics,*"
+  - "kafka.connect:type=connect-worker-metrics,*"
+  - "kafka.connect:type=connector-task-metrics,*"
+
+rules:
+  # Debezium connector metrics (numeric attributes), e.g.
+  # debezium.mysql:type=connector-metrics,context=streaming,server=paymentsdemo
+  - pattern: 'debezium.([^<]+)<type=connector-metrics, context=([^,]+), (?:task|server)=([^,>]+)(?:, key=([^,>]+))?><>(MilliSecondsBehindSource|TotalNumberOfEventsSeen|NumberOfCommittedTransactions|QueueRemainingCapacity|QueueTotalCapacity)'
+    name: debezium_metrics_$5
+    type: GAUGE
+    labels:
+      plugin: "$1"
+      context: "$2"
+      name: "$3"
+  # Debezium boolean state attributes -> 0/1 gauges.
+  - pattern: 'debezium.([^<]+)<type=connector-metrics, context=([^,]+), (?:task|server)=([^,>]+)(?:, key=([^,>]+))?><>(Connected|SnapshotCompleted|SnapshotRunning)'
+    name: debezium_metrics_$5
+    type: GAUGE
+    labels:
+      plugin: "$1"
+      context: "$2"
+      name: "$3"
+
+  # Kafka Connect worker metrics (connector/task counts).
+  - pattern: 'kafka.connect<type=connect-worker-metrics><>([a-z-]+):'
+    name: kafka_connect_connect_worker_metrics_$1
+    type: GAUGE
+  - pattern: 'kafka.connect<type=connect-worker-metrics, connector=([^>]+)><>([a-z-]+):'
+    name: kafka_connect_connect_worker_metrics_$2
+    type: GAUGE
+    labels:
+      connector: "$1"
+
+  # Kafka Connect task status (0=unassigned .. running etc. depending on version).
+  - pattern: 'kafka.connect<type=connector-task-metrics, connector=([^,]+), task=([0-9]+)><>([a-z-]+):'
+    name: kafka_connect_connector_task_metrics_$3
+    type: GAUGE
+    labels:
+      connector: "$1"
+      task: "$2"

@@ -5,6 +5,22 @@ spring:
   application:
     name: gridgain-payments-demo
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: gridgain-payments-demo
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
 demo:
   gridgain:
     instance-name: payments-demo-client

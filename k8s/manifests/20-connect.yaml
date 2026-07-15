@@ -1,0 +1,106 @@
+# Kafka Connect (Debezium) + a Job that registers the MariaDB source connector once Connect is ready.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debezium-connect
+  namespace: payments-demo
+  labels: { app: debezium-connect }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: debezium-connect } }
+  template:
+    metadata:
+      labels: { app: debezium-connect }
+    spec:
+      enableServiceLinks: false
+      initContainers:
+        - name: fetch-jmx-agent
+          image: curlimages/curl:8.8.0
+          command:
+            - sh
+            - -c
+            - "curl -fsSL https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar -o /agent/jmx.jar"
+          volumeMounts:
+            - { name: jmx-agent, mountPath: /agent }
+      containers:
+        - name: connect
+          image: gridgain-debezium-connect:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: KAFKA_OPTS, value: "-javaagent:/agent/jmx.jar=9404:/opt/jmx-cfg/connect-jmx-exporter.yml" }
+            - { name: BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: GROUP_ID, value: "1" }
+            - { name: CONFIG_STORAGE_TOPIC, value: "connect_configs" }
+            - { name: OFFSET_STORAGE_TOPIC, value: "connect_offsets" }
+            - { name: STATUS_STORAGE_TOPIC, value: "connect_statuses" }
+            - { name: CONFIG_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: OFFSET_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: STATUS_STORAGE_REPLICATION_FACTOR, value: "1" }
+            - { name: KEY_CONVERTER, value: "org.apache.kafka.connect.json.JsonConverter" }
+            - { name: VALUE_CONVERTER, value: "org.apache.kafka.connect.json.JsonConverter" }
+            - { name: KEY_CONVERTER_SCHEMAS_ENABLE, value: "false" }
+            - { name: VALUE_CONVERTER_SCHEMAS_ENABLE, value: "false" }
+          ports:
+            - { containerPort: 8083 }
+            - { containerPort: 9404 }
+          readinessProbe:
+            httpGet: { path: /connectors, port: 8083 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 24
+          resources:
+            requests: { cpu: "150m", memory: "768Mi" }
+            limits: { memory: "2Gi" }
+          volumeMounts:
+            - { name: jmx-agent, mountPath: /agent }
+            - { name: jmx-cfg, mountPath: /opt/jmx-cfg }
+      volumes:
+        - name: jmx-agent
+          emptyDir: {}
+        - name: jmx-cfg
+          configMap: { name: connect-jmx-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: debezium-connect
+  namespace: payments-demo
+spec:
+  selector: { app: debezium-connect }
+  ports:
+    - { name: rest, port: 8083, targetPort: 8083 }
+    - { name: metrics, port: 9404, targetPort: 9404 }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: register-connector
+  namespace: payments-demo
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: curlimages/curl:8.8.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for Kafka Connect..."
+              until curl -sf http://debezium-connect:8083/connectors >/dev/null; do sleep 5; done
+              echo "Connect is up. Registering connector..."
+              curl -sf -X PUT \
+                -H "Content-Type: application/json" \
+                --data @/config/connector.json \
+                http://debezium-connect:8083/connectors/paymentsdemo-mariadb-reference/config
+              echo
+              echo "Registered."
+          volumeMounts:
+            - { name: connector, mountPath: /config }
+      volumes:
+        - name: connector
+          configMap: { name: connector-config }

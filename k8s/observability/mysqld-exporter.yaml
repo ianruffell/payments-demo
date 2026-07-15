@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysqld-exporter
+  namespace: payments-demo
+  labels: { app: mysqld-exporter }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: mysqld-exporter } }
+  template:
+    metadata:
+      labels: { app: mysqld-exporter }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: exporter
+          image: prom/mysqld-exporter:v0.15.1
+          args:
+            - --mysqld.address=mariadb:3306
+            - --mysqld.username=root
+          env:
+            - name: MYSQLD_EXPORTER_PASSWORD
+              valueFrom: { secretKeyRef: { name: payments-secret, key: mariadb-root-password } }
+          ports:
+            - { containerPort: 9104 }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysqld-exporter
+  namespace: payments-demo
+spec:
+  selector: { app: mysqld-exporter }
+  ports:
+    - { name: metrics, port: 9104, targetPort: 9104 }

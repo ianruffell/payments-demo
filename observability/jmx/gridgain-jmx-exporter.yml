@@ -1,0 +1,64 @@
+# jmx_exporter agent config for GridGain / Apache Ignite nodes (spec 010).
+#
+# Maps Ignite JMX MBeans to the Prometheus metric names used by the GridGain Grafana
+# dashboard. Ignite's exact MBean ObjectName layout varies by version; the rules below
+# target the standard cluster/cache/memory/transaction MBeans. If a metric shows no data,
+# inspect the node's MBeans (e.g. via jconsole) and adjust the `pattern`/`name` accordingly.
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+startDelaySeconds: 15
+
+# Keep cardinality bounded: export only the MBeans we chart.
+whitelistObjectNames:
+  - "org.apache.*:group=Kernal,name=ClusterMetricsMXBeanImpl,*"
+  - "org.apache.*:group=Cache*,*"
+  - "org.apache.*:group=DataRegion*,*"
+  - "org.apache.*:group=TransactionMetrics,*"
+  - "org.apache.*:group=DataStorageMetrics,*"
+
+rules:
+  # Cluster: total server nodes.
+  - pattern: 'org\.apache\.<inst>:group=Kernal,name=ClusterMetricsMXBeanImpl><>TotalServerNodes'
+    name: gridgain_cluster_total_server_nodes
+    type: GAUGE
+    help: "Total GridGain server nodes in the cluster"
+
+  # Per-cache entry counts. Ignite exposes cache MBeans with the cache name in the ObjectName.
+  - pattern: 'org\.apache\.[^:]+:group=Cache groups,name=([^,]+),.*><>CacheSize'
+    name: gridgain_cache_size
+    type: GAUGE
+    labels:
+      cache: "$1"
+    help: "Entries in the GridGain cache"
+  - pattern: 'org\.apache\.[^:]+:.*name=("?)(ACCOUNTS|MERCHANTS|PAYMENTS|LEDGER_ENTRIES)("?),.*><>CacheSize'
+    name: gridgain_cache_size
+    type: GAUGE
+    labels:
+      cache: "$2"
+
+  # Cache hits / misses (counters).
+  - pattern: 'org\.apache\.[^:]+:.*name=("?)([A-Z_]+)("?),.*><>CacheHits'
+    name: gridgain_cache_hits
+    type: COUNTER
+    labels:
+      cache: "$2"
+  - pattern: 'org\.apache\.[^:]+:.*name=("?)([A-Z_]+)("?),.*><>CacheMisses'
+    name: gridgain_cache_misses
+    type: COUNTER
+    labels:
+      cache: "$2"
+
+  # Memory: on-heap and off-heap (data region) usage.
+  - pattern: 'org\.apache\.[^:]+:group=Kernal,name=ClusterMetricsMXBeanImpl><>HeapMemoryUsed'
+    name: gridgain_heap_memory_used_bytes
+    type: GAUGE
+  - pattern: 'org\.apache\.[^:]+:group=DataRegion[^,]*,name=([^,>]+)><>OffHeapUsedSize'
+    name: gridgain_data_region_offheap_used_bytes
+    type: GAUGE
+    labels:
+      region: "$1"
+
+  # Transactions committed (counter).
+  - pattern: 'org\.apache\.[^:]+:group=TransactionMetrics,.*><>TransactionsCommittedNumber'
+    name: gridgain_transactions_committed_total
+    type: COUNTER

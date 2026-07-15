@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: payments-demo
+
+resources:
+  - manifests/00-base.yaml
+  - manifests/10-data.yaml
+  - manifests/20-connect.yaml
+  - manifests/30-app.yaml
+  - manifests/40-merchants.yaml
+
+configMapGenerator:
+  - name: ignite-config
+    files:
+      - ignite-config.xml=config/ignite-config-single.xml
+  - name: gridgain-license
+    files:
+      - gridgain-license.xml=config/gridgain-license.xml
+  - name: mariadb-init
+    files:
+      - 001-init.sql=config/mariadb-init.sql
+  - name: connector-config
+    files:
+      - connector.json=config/mariadb-connector.json
+  - name: gridgain-jmx-config
+    files:
+      - gridgain-jmx-exporter.yml=observability/jmx/gridgain-jmx-exporter.yml
+  - name: connect-jmx-config
+    files:
+      - connect-jmx-exporter.yml=observability/jmx/connect-jmx-exporter.yml
+
+generatorOptions:
+  disableNameSuffixHash: true

@@ -1,0 +1,225 @@
+# Data tier: MariaDB (system of record), GridGain (cache), ZooKeeper + Kafka (CDC transport).
+# Kind-optimized: single instances.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-data
+  namespace: payments-demo
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: payments-demo
+  labels: { app: mariadb }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: mariadb } }
+  template:
+    metadata:
+      labels: { app: mariadb }
+    spec:
+      containers:
+        - name: mariadb
+          image: mariadb:11.8
+          imagePullPolicy: IfNotPresent
+          args:
+            - --log-bin=mariadb-bin
+            - --binlog-format=ROW
+            - --binlog-row-image=FULL
+            - --server-id=1
+            - --gtid-strict-mode=0
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: payments-secret, key: mariadb-root-password } }
+            - name: MARIADB_DATABASE
+              value: payments_app
+            - name: MARIADB_USER
+              value: payments_app
+            - name: MARIADB_PASSWORD
+              valueFrom: { secretKeyRef: { name: payments-secret, key: app-db-password } }
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mariadb -uroot -p\"$MARIADB_ROOT_PASSWORD\" -e 'SELECT 1'"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { memory: "768Mi" }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: mariadb-data }
+        - name: init
+          configMap: { name: mariadb-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: payments-demo
+spec:
+  selector: { app: mariadb }
+  ports:
+    - { name: mysql, port: 3306, targetPort: 3306 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gridgain
+  namespace: payments-demo
+  labels: { app: gridgain }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: gridgain } }
+  template:
+    metadata:
+      labels: { app: gridgain }
+    spec:
+      containers:
+        - name: gridgain
+          image: gridgain-ultimate-oc:8.9.32
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: JVM_MAX_MEM, value: "1g" }
+            - { name: JVM_MIN_MEM, value: "512m" }
+            - { name: CONFIG_URI, value: "/opt/gridgain/etc/ignite-config.xml" }
+            - { name: OPTION_LIBS, value: "ignite-indexing" }
+            - { name: JVM_OPTS, value: "-Djava.net.preferIPv4Stack=true" }
+          ports:
+            - { containerPort: 47500 }
+            - { containerPort: 47100 }
+            - { containerPort: 10800 }
+            - { containerPort: 9404 }   # OpenCensus -> Prometheus endpoint
+          volumeMounts:
+            - { name: ignite-config, mountPath: /opt/gridgain/etc/ignite-config.xml, subPath: ignite-config.xml }
+            - { name: license, mountPath: /opt/gridgain/gridgain-license.xml, subPath: gridgain-license.xml }
+          readinessProbe:
+            tcpSocket: { port: 10800 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 18
+          resources:
+            requests: { cpu: "250m", memory: "768Mi" }
+            limits: { memory: "1536Mi" }
+      volumes:
+        - name: ignite-config
+          configMap: { name: ignite-config }
+        - name: license
+          configMap: { name: gridgain-license }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gridgain
+  namespace: payments-demo
+spec:
+  clusterIP: None
+  selector: { app: gridgain }
+  ports:
+    - { name: discovery, port: 47500, targetPort: 47500 }
+    - { name: communication, port: 47100, targetPort: 47100 }
+    - { name: client, port: 10800, targetPort: 10800 }
+    - { name: metrics, port: 9404, targetPort: 9404 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zookeeper
+  namespace: payments-demo
+  labels: { app: zookeeper }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: zookeeper } }
+  template:
+    metadata:
+      labels: { app: zookeeper }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: zookeeper
+          image: confluentinc/cp-zookeeper:7.6.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ZOOKEEPER_CLIENT_PORT, value: "2181" }
+            - { name: ZOOKEEPER_TICK_TIME, value: "2000" }
+          ports:
+            - { containerPort: 2181 }
+          resources:
+            requests: { cpu: "50m", memory: "256Mi" }
+            limits: { memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+  namespace: payments-demo
+spec:
+  selector: { app: zookeeper }
+  ports:
+    - { name: client, port: 2181, targetPort: 2181 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: payments-demo
+  labels: { app: kafka }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: kafka } }
+  template:
+    metadata:
+      labels: { app: kafka }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.6.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: KAFKA_BROKER_ID, value: "1" }
+            - { name: KAFKA_ZOOKEEPER_CONNECT, value: "zookeeper:2181" }
+            - { name: KAFKA_LISTENERS, value: "PLAINTEXT://0.0.0.0:9092" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://kafka:9092" }
+            - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0" }
+            - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+          ports:
+            - { containerPort: 9092 }
+          readinessProbe:
+            tcpSocket: { port: 9092 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 18
+          resources:
+            requests: { cpu: "150m", memory: "768Mi" }
+            limits: { memory: "2Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: payments-demo
+spec:
+  selector: { app: kafka }
+  ports:
+    - { name: broker, port: 9092, targetPort: 9092 }

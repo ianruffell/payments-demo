@@ -59,6 +59,20 @@ That starts:
 
 Then open `http://localhost:8080`, `http://localhost:8080/flow.html`, or `http://localhost:8080/investigation.html`. If you included Control Center, open `http://localhost:8008`.
 
+## Observability (Prometheus & Grafana)
+
+An optional observability overlay adds Prometheus and Grafana with a dashboard for each area — the payments flow, MariaDB, GridGain, and Debezium/CDC. Fetch the JMX exporter agent once, then add the overlay:
+
+```bash
+./observability/jmx/download-agents.sh
+docker compose --env-file .env.mariadb -f docker-compose.yml -f docker-compose.observability.yml up --build
+```
+
+- Grafana: `http://localhost:3001` (demo login `admin` / `admin`) — the Prometheus data source and all four dashboards are provisioned automatically.
+- Prometheus: `http://localhost:9090` (targets under Status → Targets).
+
+The processor exposes application metrics at `http://localhost:8080/actuator/prometheus`, including per-stage payments-flow metrics (`payments_flow_transactions{stage,outcome}`, `payments_approval_rate`, `payments_decline_reasons{reason}`, `payments_fraud_threshold`). MariaDB is scraped via `mysqld_exporter` (one per Galera node), and GridGain and Kafka Connect/Debezium via a JMX Prometheus agent. Prometheus retains ~6h of data by default.
+
 ## Run Without Compose
 
 GridGain 8 on Java 11+ requires several JVM `--add-opens` flags. Start your GridGain cluster first, then run the app with the cluster discovery addresses configured in [application.yml](/Users/iruffell/workspace/payments-demo/src/main/resources/application.yml) or via Spring properties:

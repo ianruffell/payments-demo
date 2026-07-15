@@ -1,0 +1,123 @@
+# Observability overlay (spec 010): Prometheus + Grafana + exporters.
+#
+# Usage (run the agent fetch once, then bring the stack up with the overlay):
+#   ./observability/jmx/download-agents.sh
+#   docker compose --env-file .env.mariadb -f docker-compose.yml -f docker-compose.observability.yml up --build
+#
+# Grafana:    http://localhost:3001  (admin / admin — demo only)
+# Prometheus: http://localhost:9090
+#
+# This overlay is additive: it introduces the monitoring services and attaches the JMX
+# Prometheus agent to the GridGain nodes and the Debezium Connect worker via
+# JAVA_TOOL_OPTIONS (which the JVM appends, leaving each image's own JVM flags intact).
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - gridgain
+    restart: on-failure
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - gridgain
+    restart: on-failure
+
+  # One mysqld_exporter per Galera node (connects directly to the node as root).
+  mysqld-exporter-db1:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysqld-exporter-db1
+    profiles: [mariadb]
+    command:
+      - --mysqld.address=db1:3306
+      - --mysqld.username=root
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
+    networks:
+      - gridgain
+    restart: on-failure
+
+  mysqld-exporter-db2:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysqld-exporter-db2
+    profiles: [mariadb]
+    command:
+      - --mysqld.address=db2:3306
+      - --mysqld.username=root
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
+    networks:
+      - gridgain
+    restart: on-failure
+
+  mysqld-exporter-db3:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysqld-exporter-db3
+    profiles: [mariadb]
+    command:
+      - --mysqld.address=db3:3306
+      - --mysqld.username=root
+    environment:
+      MYSQLD_EXPORTER_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb}
+    networks:
+      - gridgain
+    restart: on-failure
+
+  # Attach the JMX Prometheus agent to each GridGain node (exposes :9404 in-network).
+  gg8-node1:
+    environment:
+      JAVA_TOOL_OPTIONS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=9404:/opt/jmx/gridgain-jmx-exporter.yml"
+    volumes:
+      - ./observability/jmx:/opt/jmx:ro
+
+  gg8-node2:
+    environment:
+      JAVA_TOOL_OPTIONS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=9404:/opt/jmx/gridgain-jmx-exporter.yml"
+    volumes:
+      - ./observability/jmx:/opt/jmx:ro
+
+  gg8-node3:
+    environment:
+      JAVA_TOOL_OPTIONS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=9404:/opt/jmx/gridgain-jmx-exporter.yml"
+    volumes:
+      - ./observability/jmx:/opt/jmx:ro
+
+  # Attach the JMX Prometheus agent to the Kafka Connect (Debezium) worker.
+  debezium-connect:
+    environment:
+      JAVA_TOOL_OPTIONS: "-javaagent:/opt/jmx/jmx_prometheus_javaagent.jar=9404:/opt/jmx/connect-jmx-exporter.yml"
+    volumes:
+      - ./observability/jmx:/opt/jmx:ro
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  gridgain:
+    name: gridgain

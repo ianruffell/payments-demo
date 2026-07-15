@@ -1,0 +1,178 @@
+# Application roles (same image, different Spring profiles) + merchant simulators.
+# Kind-optimized: seed reduced to 5000 accounts / 3 merchants.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-demo-app
+  namespace: payments-demo
+  labels: { app: payments-demo-app, role: processor }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payments-demo-app } }
+  template:
+    metadata:
+      labels: { app: payments-demo-app, role: processor }
+    spec:
+      initContainers:
+        - name: wait-deps
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "until nc -z gridgain 47500; do echo wait gridgain; sleep 3; done;
+               until nc -z mariadb 3306; do echo wait mariadb; sleep 3; done;
+               until nc -z kafka 9092; do echo wait kafka; sleep 3; done"
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:s010
+          imagePullPolicy: IfNotPresent
+          env:
+            # JAVA_TOOL_OPTIONS is intentionally NOT set here: the image already sets it with the
+            # GridGain --add-opens flags required on Java 17. Heap is bounded by the container limit.
+            - { name: DEMO_GRIDGAIN_DISCOVERY_ADDRESSES, value: "gridgain:47500..47509" }
+            - { name: DEMO_GRIDGAIN_LICENSE_URL, value: "/app/gridgain-license.xml" }
+            - { name: DEMO_EXTERNAL_DB_TYPE, value: "mariadb" }
+            - { name: DEMO_EXTERNAL_DB_JDBC_URL, value: "jdbc:mariadb://mariadb:3306/payments_app" }
+            - { name: DEMO_EXTERNAL_DB_USERNAME, value: "payments_app" }
+            - name: DEMO_EXTERNAL_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: payments-secret, key: app-db-password } }
+            - { name: DEMO_EXTERNAL_DB_CDC_KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: DEMO_EXTERNAL_DB_CDC_SINK_GROUP_ID, value: "payments-reference-cache-sink" }
+            - { name: DEMO_EXTERNAL_DB_CDC_TOPIC_PREFIX, value: "paymentsdemo" }
+            - { name: DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME, value: "payments_app" }
+            - { name: DEMO_EXTERNAL_DB_CDC_CONNECTOR_NAME, value: "paymentsdemo-mariadb-reference" }
+            - { name: DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC, value: "ACCOUNTS" }
+            - { name: DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC, value: "MERCHANTS" }
+            - { name: DEMO_SEED_ACCOUNTS, value: "5000" }
+            - { name: DEMO_SEED_MERCHANTS, value: "3" }
+            - { name: DEMO_PROCESSOR_BASE_URL, value: "http://payments-demo-app:8080" }
+            - { name: DEMO_PROCESSOR_CALLBACK_URL, value: "http://payments-demo-app:8080/api/merchant-results" }
+            - { name: DEMO_INITIATOR_BASE_URL, value: "http://payments-demo-initiator:8080" }
+          ports:
+            - { containerPort: 8080 }
+          volumeMounts:
+            - { name: license, mountPath: /app/gridgain-license.xml, subPath: gridgain-license.xml }
+          # The :s010 image adds Spring Boot Actuator, so probe the real health endpoint.
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1024Mi" }
+      volumes:
+        - name: license
+          configMap: { name: gridgain-license }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-demo-app
+  namespace: payments-demo
+spec:
+  type: NodePort
+  selector: { app: payments-demo-app }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080, nodePort: 30080 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-demo-initiator
+  namespace: payments-demo
+  labels: { app: payments-demo-initiator, role: payment-initiator }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payments-demo-initiator } }
+  template:
+    metadata:
+      labels: { app: payments-demo-initiator, role: payment-initiator }
+    spec:
+      initContainers:
+        - name: wait-deps
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "until nc -z gridgain 47500; do echo wait gridgain; sleep 3; done;
+               until nc -z payments-demo-app 8080; do echo wait processor; sleep 3; done"
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:s010
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: "payment-initiator" }
+            - { name: DEMO_GRIDGAIN_DISCOVERY_ADDRESSES, value: "gridgain:47500..47509" }
+            - { name: DEMO_GRIDGAIN_LICENSE_URL, value: "/app/gridgain-license.xml" }
+            - { name: DEMO_PROCESSOR_BASE_URL, value: "http://payments-demo-app:8080" }
+          ports:
+            - { containerPort: 8080 }
+          volumeMounts:
+            - { name: license, mountPath: /app/gridgain-license.xml, subPath: gridgain-license.xml }
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests: { cpu: "100m", memory: "320Mi" }
+            limits: { memory: "640Mi" }
+      volumes:
+        - name: license
+          configMap: { name: gridgain-license }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-demo-initiator
+  namespace: payments-demo
+spec:
+  selector: { app: payments-demo-initiator }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-reference-cache-sink
+  namespace: payments-demo
+  labels: { app: payments-reference-cache-sink, role: reference-cache-sink }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: payments-reference-cache-sink } }
+  template:
+    metadata:
+      labels: { app: payments-reference-cache-sink, role: reference-cache-sink }
+    spec:
+      initContainers:
+        - name: wait-deps
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "until nc -z gridgain 47500; do echo wait gridgain; sleep 3; done;
+               until nc -z kafka 9092; do echo wait kafka; sleep 3; done"
+      containers:
+        - name: app
+          image: gridgain-payments-demo-app:s010
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SPRING_PROFILES_ACTIVE, value: "reference-cache-sink" }
+            - { name: DEMO_GRIDGAIN_DISCOVERY_ADDRESSES, value: "gridgain:47500..47509" }
+            - { name: DEMO_GRIDGAIN_LICENSE_URL, value: "/app/gridgain-license.xml" }
+            - { name: DEMO_EXTERNAL_DB_CDC_KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: DEMO_EXTERNAL_DB_CDC_SINK_GROUP_ID, value: "payments-reference-cache-sink" }
+            - { name: DEMO_EXTERNAL_DB_CDC_TOPIC_PREFIX, value: "paymentsdemo" }
+            - { name: DEMO_EXTERNAL_DB_CDC_SCHEMA_NAME, value: "payments_app" }
+            - { name: DEMO_EXTERNAL_DB_CDC_ACCOUNTS_TOPIC, value: "ACCOUNTS" }
+            - { name: DEMO_EXTERNAL_DB_CDC_MERCHANTS_TOPIC, value: "MERCHANTS" }
+          volumeMounts:
+            - { name: license, mountPath: /app/gridgain-license.xml, subPath: gridgain-license.xml }
+          resources:
+            requests: { cpu: "100m", memory: "320Mi" }
+            limits: { memory: "640Mi" }
+      volumes:
+        - name: license
+          configMap: { name: gridgain-license }

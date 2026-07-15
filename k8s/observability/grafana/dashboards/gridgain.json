@@ -1,0 +1,67 @@
+{
+  "uid": "gridgain",
+  "title": "GridGain",
+  "schemaVersion": 39,
+  "editable": true,
+  "tags": ["gridgain", "cache", "infrastructure", "demo"],
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "timezone": "",
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    { "type": "row", "id": 1, "title": "Cluster", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "stat", "id": 2, "title": "Server nodes",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(cluster_TotalServerNodes{job=\"gridgain\"})", "legendFormat": "servers" } ]
+    },
+    {
+      "type": "stat", "id": 3, "title": "Client nodes (app roles)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(cluster_TotalClientNodes{job=\"gridgain\"})", "legendFormat": "clients" } ]
+    },
+    {
+      "type": "stat", "id": 4, "title": "Baseline nodes",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(cluster_TotalBaselineNodes{job=\"gridgain\"})", "legendFormat": "baseline" } ]
+    },
+    { "type": "row", "id": 5, "title": "Caches", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+    {
+      "type": "timeseries", "id": 6, "title": "Cache entries by cache",
+      "description": "Per-cache entry count. The payments cache rises under load and falls as terminal payments are archived to MariaDB and evicted.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "{__name__=~\"cache_(accounts|merchants|payments|ledger_entries|merchant_payment_attempts)_CacheSize\", job=\"gridgain\"}", "legendFormat": "{{__name__}}" } ]
+    },
+    { "type": "row", "id": 7, "title": "Memory & Transactions", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 } },
+    {
+      "type": "timeseries", "id": 8, "title": "Default data region — physical memory (pages)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "io_dataregion_default_PhysicalMemoryPages{job=\"gridgain\"}", "legendFormat": "physical pages" } ]
+    },
+    {
+      "type": "timeseries", "id": 9, "title": "Default data region — fill factor",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "io_dataregion_default_PagesFillFactor{job=\"gridgain\"}", "legendFormat": "fill factor" } ]
+    },
+    {
+      "type": "timeseries", "id": 10, "title": "Transaction rollbacks / sec",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "rate(tx_txRollbacks{job=\"gridgain\"}[1m])", "legendFormat": "rollbacks/s" } ]
+    }
+  ]
+}
