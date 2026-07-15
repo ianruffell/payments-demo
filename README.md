@@ -59,6 +59,22 @@ That starts:
 
 Then open `http://localhost:8080`, `http://localhost:8080/flow.html`, or `http://localhost:8080/investigation.html`. If you included Control Center, open `http://localhost:8008`.
 
+## AI Fraud Detection
+
+Every authorization is scored in real time by an AI fraud gate before it is dispatched to the
+merchant. The model's input is a per-customer **context** — a profile plus a bounded rolling
+purchase history — held **only in the GridGain `customer_context` cache** (never the external
+database). Contexts are seeded for every account at startup and updated after each payment
+decision, so scoring is personalized from a customer's first transaction and stays current.
+Payments that cross the threshold are declined with reason `AI_FRAUD_BLOCK` and never reach a
+merchant; they appear as "declined before merchant" in the transaction-flow view.
+
+Settings (`demo.fraud.ai.*` in `application.yml`): `threshold` (default 80), `history-size`
+(default 20), `fail-policy` (`fail-open` default — on model/context failure the payment falls
+back to the legacy heuristic instead of being blocked; `fail-closed` rejects), and `model`
+(`local`, a deterministic in-process model pluggable behind the `FraudModel` interface).
+Adjust the threshold at runtime with `POST /api/admin/ai-fraud-threshold?value=70`. A **Fraud Detection** page in the demo UI (`/fraud.html`) shows a live summary of fraud activity and a table of blocked payments with their scores and signals; the data is served by `GET /api/fraud/summary` and `GET /api/fraud/blocked`.
+
 ## Observability (Prometheus & Grafana)
 
 An optional observability overlay adds Prometheus and Grafana with a dashboard for each area — the payments flow, MariaDB, GridGain, and Debezium/CDC. Fetch the JMX exporter agent once, then add the overlay:

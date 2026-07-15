@@ -2,6 +2,7 @@ package com.example.paymentsdemo.service;
 
 import com.example.paymentsdemo.domain.Account;
 import com.example.paymentsdemo.domain.AccountStatus;
+import com.example.paymentsdemo.domain.CustomerContext;
 import com.example.paymentsdemo.domain.Merchant;
 import com.example.paymentsdemo.domain.RiskTier;
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 import org.apache.ignite.Ignite;
+import org.apache.ignite.IgniteCache;
 import org.apache.ignite.IgniteDataStreamer;
 import org.springframework.context.annotation.Profile;
 import org.slf4j.Logger;
@@ -52,6 +54,7 @@ public class SeedDataLoader implements ApplicationRunner {
 
     private final Ignite ignite;
     private final SystemOfRecordRepository systemOfRecordRepository;
+    private final CustomerContextService customerContextService;
     private final boolean enabled;
     private final int accountCount;
     private final int merchantCount;
@@ -61,6 +64,7 @@ public class SeedDataLoader implements ApplicationRunner {
     public SeedDataLoader(
             Ignite ignite,
             SystemOfRecordRepository systemOfRecordRepository,
+            CustomerContextService customerContextService,
             @Value("${demo.seed.enabled:true}") boolean enabled,
             @Value("${demo.seed.accounts:100000}") int accountCount,
             @Value("${demo.seed.merchants:5}") int merchantCount,
@@ -69,6 +73,7 @@ public class SeedDataLoader implements ApplicationRunner {
     ) {
         this.ignite = ignite;
         this.systemOfRecordRepository = systemOfRecordRepository;
+        this.customerContextService = customerContextService;
         this.enabled = enabled;
         this.accountCount = accountCount;
         this.merchantCount = merchantCount;
@@ -116,6 +121,33 @@ public class SeedDataLoader implements ApplicationRunner {
         normalizeGenericMerchantNames();
         systemOfRecordRepository.enableReferenceTableCdc();
         refreshReferenceCaches();
+        seedCustomerContexts();
+    }
+
+    /**
+     * Give every customer an initial context in GridGain at startup (spec 011) so the AI fraud
+     * gate has personalized input from their first payment. Cache-only: never written to the
+     * external system of record.
+     */
+    private void seedCustomerContexts() {
+        IgniteCache<String, CustomerContext> contexts = ignite.cache(CacheNames.CUSTOMER_CONTEXT);
+        long existing = contexts.sizeLong();
+        if (existing > 0) {
+            log.info("Skipping customer-context seed because {} context(s) already exist.", existing);
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long seededCount = 0;
+        try (IgniteDataStreamer<String, CustomerContext> streamer = ignite.dataStreamer(CacheNames.CUSTOMER_CONTEXT)) {
+            streamer.perNodeBufferSize(4096);
+            for (Account account : systemOfRecordRepository.loadAllAccounts()) {
+                streamer.addData(account.getAccountId(), customerContextService.baselineFor(account, now, true));
+                seededCount++;
+            }
+        }
+
+        log.info("Seeded initial customer contexts for {} account(s) into GridGain.", seededCount);
     }
 
     private boolean seedDataReadable() {

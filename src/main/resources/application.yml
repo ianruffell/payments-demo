@@ -56,6 +56,11 @@ demo:
     base-url: http://payments-demo-initiator:8080
   fraud:
     threshold: 84.0
+    ai:
+      threshold: 80.0
+      history-size: 20
+      fail-policy: fail-open
+      model: local
   processor:
     base-url: http://payments-demo-app:8080
     callback-url: http://payments-demo-app:8080/api/merchant-results

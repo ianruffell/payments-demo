@@ -7,6 +7,7 @@ public final class CacheNames {
     public static final String PAYMENTS = "payments";
     public static final String LEDGER_ENTRIES = "ledger_entries";
     public static final String MERCHANT_PAYMENT_ATTEMPTS = "merchant_payment_attempts";
+    public static final String CUSTOMER_CONTEXT = "customer_context";
 
     private CacheNames() {
     }

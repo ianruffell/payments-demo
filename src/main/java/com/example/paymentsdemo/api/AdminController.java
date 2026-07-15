@@ -1,6 +1,7 @@
 package com.example.paymentsdemo.api;
 
 import com.example.paymentsdemo.domain.Merchant;
+import com.example.paymentsdemo.service.FraudDetectionService;
 import com.example.paymentsdemo.service.FraudService;
 import com.example.paymentsdemo.service.MerchantAdminService;
 import java.util.Map;
@@ -18,10 +19,16 @@ public class AdminController {
 
     private final MerchantAdminService merchantAdminService;
     private final FraudService fraudService;
+    private final FraudDetectionService fraudDetectionService;
 
-    public AdminController(MerchantAdminService merchantAdminService, FraudService fraudService) {
+    public AdminController(
+            MerchantAdminService merchantAdminService,
+            FraudService fraudService,
+            FraudDetectionService fraudDetectionService
+    ) {
         this.merchantAdminService = merchantAdminService;
         this.fraudService = fraudService;
+        this.fraudDetectionService = fraudDetectionService;
     }
 
     @PostMapping("/merchants/{merchantId}/status")
@@ -33,5 +40,11 @@ public class AdminController {
     public Map<String, Double> setFraudThreshold(@RequestParam double value) {
         fraudService.setThreshold(value);
         return Map.of("fraudThreshold", fraudService.getThreshold());
+    }
+
+    @PostMapping("/ai-fraud-threshold")
+    public Map<String, Double> setAiFraudThreshold(@RequestParam double value) {
+        fraudDetectionService.setThreshold(value);
+        return Map.of("aiFraudThreshold", fraudDetectionService.getThreshold());
     }
 }

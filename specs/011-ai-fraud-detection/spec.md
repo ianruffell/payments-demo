@@ -92,6 +92,23 @@ As an operator, I can configure the fraud threshold, and I can observe fraud dec
 
 ---
 
+### User Story 6 - Fraud activity dashboard page (Priority: P3)
+
+As an analyst, I open a dedicated Fraud Detection page in the demo UI that summarizes fraud activity — how many payments have been screened, how many were blocked, the block rate, the current threshold — and shows a live table of the payments that were blocked as fraudulent, with the details that explain each block (customer, merchant, amount, fraud score, the contributing signals, and when it happened).
+
+**Why this priority**: A purpose-built view makes the AI gate demonstrable at a glance; it is valuable for showing the feature but the gate itself works without it, so it is the lowest priority.
+
+**Independent Test**: Open the Fraud Detection page while traffic flows (with the threshold low enough to produce blocks); confirm the summary counts update and the blocked-payments table lists the rejected payments with their scores and signals.
+
+**Acceptance Scenarios**:
+
+1. **Given** the demo UI, **When** the operator opens the Fraud Detection page, **Then** it shows a summary of fraud activity (payments screened, payments blocked, block rate, current threshold, suspicious count) and refreshes live.
+2. **Given** payments have been blocked as fraudulent, **When** the operator views the page, **Then** a table lists the most recent blocked payments with customer, merchant, amount, fraud score, contributing signals, and timestamp.
+3. **Given** no payments have been blocked yet, **When** the operator views the page, **Then** the summary reads zero and the table shows an empty state without error.
+4. **Given** the other demo pages, **When** the operator uses the page navigation, **Then** the Fraud Detection page is reachable as a first-class page alongside Dashboard, Transaction Flow, and AI Investigation.
+
+---
+
 ### Edge Cases
 
 - **Cold start (no context)**: Seeded customers already have an initial context at startup. A customer with no context — e.g. an account added after seeding, or any customer after the context cache is cleared without a restart — is scored against a defined baseline profile and still decided; the context is created from that first payment.
@@ -115,6 +132,8 @@ As an operator, I can configure the fraud threshold, and I can observe fraud dec
 - **FR-007**: The rolling purchase history MUST be bounded to a configured size/window so per-customer context memory is predictable.
 - **FR-008**: A first-seen customer (no context) MUST be scored using a defined cold-start baseline, and a context MUST be created from that first payment.
 - **FR-015**: At demo startup, when customer/account data is seeded, the system MUST seed an initial context in GridGain for every seeded customer, derived from their account (risk tier, home currency/country, tenure, starting typical-spend estimate) with empty/neutral history, so scoring is personalized from a customer's first payment. Seeded context MUST be written to GridGain only, never to the external system of record.
+- **FR-016**: The demo UI MUST provide a Fraud Detection page, reachable from the shared page navigation, that displays a live summary of fraud activity: payments screened, payments blocked, block rate, current threshold, and suspicious count.
+- **FR-017**: The Fraud Detection page MUST show a live table of the most recent payments blocked as fraudulent, including customer, merchant, amount, fraud score, contributing signals, and timestamp, backed by an API endpoint; it MUST render an empty state cleanly when there are no blocked payments.
 - **FR-009**: If the model or context is unavailable, the gate MUST apply a configured fail policy (default fail-open, with fail-closed configurable) and MUST NOT crash the authorize path.
 - **FR-010**: Fraud scoring MUST run on the authorize hot path without adding a synchronous external-database call; context reads and writes MUST go to GridGain only.
 - **FR-011**: The fraud threshold MUST be configurable at runtime without a code change.
@@ -129,6 +148,7 @@ As an operator, I can configure the fraud threshold, and I can observe fraud dec
 - **Fraud decision**: The model output — a fraud score/probability plus a pass/reject verdict against the threshold and the decline reason used when rejected.
 - **Fraud model (pluggable)**: The scorer behind a stable interface; the demo ships a self-contained local model, swappable for an external inference endpoint.
 - **Fraud threshold + fail policy (config)**: Runtime-configurable threshold and the fail-open/fail-closed behavior for model/context unavailability.
+- **Fraud activity summary + blocked-payment view**: The aggregate fraud counters (screened, blocked, suspicious, block rate, current threshold) and the recent-blocked-payment records (customer, merchant, amount, score, signals, timestamp) surfaced by the Fraud Detection page and its API.
 
 ## Success Criteria *(mandatory)*
 
@@ -142,6 +162,7 @@ As an operator, I can configure the fraud threshold, and I can observe fraud dec
 - **SC-006**: Lowering the fraud threshold measurably increases the pre-merchant fraud-rejection rate, visible in the dashboard/flow view.
 - **SC-007**: Enabling the AI fraud gate adds no synchronous external-database call to the authorize path; authorize latency stays within the demo's existing envelope.
 - **SC-008**: On a fresh start, every seeded customer has an initial context in GridGain before any traffic is processed, so a customer's first payment is scored with personalized (non-cold-start) input.
+- **SC-009**: The Fraud Detection page loads from the demo UI, updates its summary live as traffic flows, and lists blocked payments with their fraud scores and signals; with no blocks it shows a clean empty state.
 
 ## Assumptions
 

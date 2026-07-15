@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection | GridGain Payments Demo</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="shell">
+    <section class="hero hero-split">
+        <div>
+            <p class="eyebrow">GridGain Payments Demo</p>
+            <h1>Fraud detection</h1>
+            <p class="lede">
+                Real-time AI fraud gate scoring each payment against its customer context in
+                GridGain, before the merchant. Blocked payments never reach a merchant.
+            </p>
+        </div>
+        <details class="page-menu">
+            <summary class="menu-trigger">
+                <span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>
+                <span class="sr-only">Open page menu</span>
+            </summary>
+            <nav class="page-menu__panel" aria-label="Pages">
+                <a class="menu-item" href="/">Dashboard</a>
+                <a class="menu-item" href="/flow.html">Transaction Flow</a>
+                <a class="menu-item" href="/investigation.html">AI Investigation</a>
+                <a class="menu-item active" href="/fraud.html" aria-current="page">Fraud Detection</a>
+            </nav>
+        </details>
+    </section>
+
+    <section class="stats-grid" aria-label="Fraud activity summary">
+        <article class="stat-card">
+            <span>Payments Screened</span>
+            <strong id="statScreened">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Blocked As Fraud</span>
+            <strong id="statBlocked">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Block Rate</span>
+            <strong id="statRate">0%</strong>
+        </article>
+        <article class="stat-card">
+            <span>Suspicious</span>
+            <strong id="statSuspicious">0</strong>
+        </article>
+        <article class="stat-card">
+            <span>Fraud Threshold</span>
+            <strong id="statThreshold">–</strong>
+        </article>
+    </section>
+
+    <section class="panel wide">
+        <div class="section-header">
+            <h2>Blocked Payments</h2>
+            <span id="fraudMeta" class="muted">Most recent AI fraud blocks</span>
+        </div>
+        <table>
+            <thead>
+            <tr>
+                <th>Time</th>
+                <th>Payment</th>
+                <th>Customer</th>
+                <th>Merchant</th>
+                <th>Amount</th>
+                <th>Score</th>
+                <th>Signals</th>
+            </tr>
+            </thead>
+            <tbody id="blockedBody">
+            <tr><td colspan="7" class="muted">Loading…</td></tr>
+            </tbody>
+        </table>
+    </section>
+</main>
+
+<script src="/fraud.js"></script>
+</body>
+</html>

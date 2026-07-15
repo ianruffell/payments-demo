@@ -35,7 +35,9 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class PaymentService {
 
     private final Ignite ignite;
-    private final FraudService fraudService;
+    private final FraudDetectionService fraudDetectionService;
+    private final CustomerContextService customerContextService;
+    private final FraudMonitorService fraudMonitorService;
     private final MerchantDispatchService merchantDispatchService;
     private final SystemOfRecordRepository systemOfRecordRepository;
     private final String processorCallbackUrl;
@@ -43,14 +45,18 @@ public class PaymentService {
 
     public PaymentService(
             Ignite ignite,
-            FraudService fraudService,
+            FraudDetectionService fraudDetectionService,
+            CustomerContextService customerContextService,
+            FraudMonitorService fraudMonitorService,
             MerchantDispatchService merchantDispatchService,
             SystemOfRecordRepository systemOfRecordRepository,
             @Value("${demo.processor.callback-url:http://payments-demo-app:8080/api/merchant-results}") String processorCallbackUrl,
             @Value("${demo.processor.merchant-timeout-ms:10000}") long merchantTimeoutMs
     ) {
         this.ignite = ignite;
-        this.fraudService = fraudService;
+        this.fraudDetectionService = fraudDetectionService;
+        this.customerContextService = customerContextService;
+        this.fraudMonitorService = fraudMonitorService;
         this.merchantDispatchService = merchantDispatchService;
         this.systemOfRecordRepository = systemOfRecordRepository;
         this.processorCallbackUrl = processorCallbackUrl;
@@ -69,7 +75,9 @@ public class PaymentService {
         IgniteCache<String, MerchantPaymentAttempt> attempts = ignite.cache(CacheNames.MERCHANT_PAYMENT_ATTEMPTS);
 
         Merchant merchantForDispatch;
+        Account accountForContext;
         Payment payment;
+        com.example.paymentsdemo.fraud.FraudAssessment assessment;
         MerchantPaymentAttempt attempt = null;
         String message;
 
@@ -94,9 +102,15 @@ public class PaymentService {
             }
 
             long now = Instant.now().toEpochMilli();
-            double fraudScore = fraudService.score(account, merchant, request.amountMinor());
-            String declineReason = validateAuthorization(request, account, merchant, fraudScore);
-            boolean suspicious = fraudService.isSuspicious(fraudScore);
+            // AI fraud gate (spec 011): score against the customer's GridGain-held context.
+            assessment = fraudDetectionService.assess(
+                    account, merchant, request.amountMinor(), request.currency(), now);
+            double fraudScore = assessment.score();
+            boolean suspicious = assessment.suspicious();
+            String declineReason = validateAuthorization(request, account, merchant);
+            if (declineReason == null && assessment.rejected()) {
+                declineReason = assessment.declineReason();
+            }
 
             if (declineReason == null) {
                 payment = new Payment(
@@ -151,7 +165,21 @@ public class PaymentService {
             payments.put(payment.getPaymentId(), payment);
             tx.commit();
             merchantForDispatch = merchant;
+            accountForContext = account;
         }
+
+        // Keep the customer's cache-only context current after every decision (spec 011).
+        customerContextService.recordPayment(
+                accountForContext,
+                merchantForDispatch,
+                payment.getAmountMinor(),
+                payment.getCurrency(),
+                payment.getDeclineReason() == null ? "SENT_TO_MERCHANT" : "DECLINED:" + payment.getDeclineReason(),
+                payment.getCreatedAtEpochMs()
+        );
+
+        // Feed the fraud activity monitor for the Fraud Detection page (spec 011).
+        fraudMonitorService.record(payment, assessment);
 
         if (attempt != null) {
             merchantDispatchService.dispatch(payment, merchantForDispatch, attempt);
@@ -425,8 +453,7 @@ public class PaymentService {
     private String validateAuthorization(
             AuthorizePaymentRequest request,
             Account account,
-            Merchant merchant,
-            double fraudScore
+            Merchant merchant
     ) {
         if (account.getStatus() != AccountStatus.ACTIVE) {
             return "ACCOUNT_NOT_ACTIVE";
@@ -456,10 +483,7 @@ public class PaymentService {
             return "INSUFFICIENT_FUNDS";
         }
 
-        if (fraudService.isFraudulent(fraudScore)) {
-            return "FRAUD_SCORE_EXCEEDED";
-        }
-
+        // Fraud is decided by the AI gate in authorize() (spec 011), not here.
         return null;
     }
 

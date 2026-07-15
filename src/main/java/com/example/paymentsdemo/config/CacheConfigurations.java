@@ -21,8 +21,23 @@ public final class CacheConfigurations {
                 cacheConfiguration(CacheNames.MERCHANTS, String.class, Merchant.class),
                 cacheConfiguration(CacheNames.PAYMENTS, String.class, Payment.class),
                 cacheConfiguration(CacheNames.LEDGER_ENTRIES, String.class, LedgerEntry.class),
-                cacheConfiguration(CacheNames.MERCHANT_PAYMENT_ATTEMPTS, String.class, MerchantPaymentAttempt.class)
+                cacheConfiguration(CacheNames.MERCHANT_PAYMENT_ATTEMPTS, String.class, MerchantPaymentAttempt.class),
+                customerContextCacheConfiguration()
         };
+    }
+
+    /**
+     * Cache-only customer context for the AI fraud gate (spec 011). Deliberately not SQL-indexed
+     * and never persisted to the external system of record: it is derived behavioral state that
+     * rebuilds from payment activity.
+     */
+    private static CacheConfiguration<String, Object> customerContextCacheConfiguration() {
+        CacheConfiguration<String, Object> cacheConfiguration = new CacheConfiguration<>(CacheNames.CUSTOMER_CONTEXT);
+        cacheConfiguration.setCacheMode(CacheMode.PARTITIONED);
+        cacheConfiguration.setBackups(1);
+        cacheConfiguration.setStatisticsEnabled(true);
+        cacheConfiguration.setAtomicityMode(CacheAtomicityMode.TRANSACTIONAL);
+        return cacheConfiguration;
     }
 
     private static <K, V> CacheConfiguration<K, V> cacheConfiguration(

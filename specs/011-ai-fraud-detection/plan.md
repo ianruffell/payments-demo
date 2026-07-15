@@ -70,12 +70,22 @@ src/main/
 │   │   ├── FraudModel.java                     # NEW: pluggable scoring interface
 │   │   ├── LocalFraudModel.java                # NEW: self-contained deterministic demo model
 │   │   └── FraudFeatures.java                  # NEW: feature vector assembled from context + payment
+│   ├── service/FraudMonitorService.java        # NEW: fraud activity counters + recent-blocked ring buffer
+│   ├── api/FraudController.java                 # NEW: GET /api/fraud/summary, GET /api/fraud/blocked
+│   ├── dto/
+│   │   ├── FraudSummaryResponse.java           # NEW: screened/blocked/suspicious/rate/threshold
+│   │   └── BlockedPaymentView.java             # NEW: one blocked-payment row for the table
 │   ├── domain/
 │   │   └── CustomerContext.java               # NEW: profile + bounded rolling history + aggregates
 │   └── config/
 │       └── CacheConfigurations.java           # CHANGED: define the customer_context cache
 └── resources/
-    └── application.yml                         # CHANGED: demo.fraud.ai.{threshold,history-size,fail-policy,model}
+    ├── application.yml                         # CHANGED: demo.fraud.ai.{threshold,history-size,fail-policy,model}
+    └── static/
+        ├── fraud.html                          # NEW: Fraud Detection page (summary + blocked table)
+        ├── fraud.js                            # NEW: polls the fraud API and renders
+        ├── index.html / flow.html / investigation.html  # CHANGED: nav link to the new page
+        └── styles.css                          # CHANGED (if needed): minor table styling
 ```
 
 **Structure Decision**: Additive to the existing processor. The gate hooks the current authorize decision point rather than adding a new stage; the model lives behind a `FraudModel` interface in a new `fraud` package; the context is a new GridGain cache and a service that owns it. No new modules, no schema changes.
@@ -90,6 +100,7 @@ src/main/
 - **Cold start & fail policy**: a customer with no context (added after seeding, or after a cache clear without restart) → baseline profile, decision proceeds, context created. Model/context error → configured fail policy (default fail-open: proceed to merchant review; fail-closed optional), never crashing authorize.
 - **Bounded context**: history capped at `demo.fraud.ai.history-size`; aggregates recomputed/rolled incrementally so per-customer memory is predictable at scale.
 - **Observability**: rejections reuse the decline-before-merchant path, so existing dashboard/flow panels and the spec-010 flow metrics reflect AI fraud blocks with no extra wiring.
+- **Fraud dashboard page**: a `FraudMonitorService` keeps in-memory counters (screened/blocked/suspicious) and a bounded ring buffer of recent blocked payments (with the contributing signals, which are not persisted on `Payment`); `PaymentService` records each decision into it. `FraudController` exposes `GET /api/fraud/summary` and `GET /api/fraud/blocked`, and a static `fraud.html`/`fraud.js` page polls them. In-memory is acceptable for a live demo view (resets on restart); no schema change and nothing new persisted.
 
 ## Complexity Tracking
 
