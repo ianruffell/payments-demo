@@ -119,14 +119,22 @@ public class PaymentSimulator {
     }
 
     private void tick() {
-        processPendingMerchantPayments();
+        // Resilience (spec 012): scheduleAtFixedRate CANCELS the task permanently if a run throws.
+        // A transient GridGain error during a topology change (e.g. the processor/GridGain pods
+        // rolling) could otherwise wedge the simulator — running=true but nothing generated, needing
+        // a manual restart. Catch everything so the ticker always survives to the next second.
+        try {
+            processPendingMerchantPayments();
 
-        if (!running.get()) {
-            return;
-        }
+            if (!running.get()) {
+                return;
+            }
 
-        for (int i = 0; i < ratePerSecond.get(); i++) {
-            workerExecutor.submit(this::generatePayment);
+            for (int i = 0; i < ratePerSecond.get(); i++) {
+                workerExecutor.submit(this::generatePayment);
+            }
+        } catch (Throwable t) {
+            log.warn("Payment initiator tick failed; ticker continues.", t);
         }
     }
 

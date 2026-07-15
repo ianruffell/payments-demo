@@ -25,7 +25,7 @@ spec:
                until nc -z kafka 9092; do echo wait kafka; sleep 3; done"
       containers:
         - name: app
-          image: gridgain-payments-demo-app:s011c
+          image: gridgain-payments-demo-app:s012
           imagePullPolicy: IfNotPresent
           env:
             # JAVA_TOOL_OPTIONS is intentionally NOT set here: the image already sets it with the
@@ -100,7 +100,7 @@ spec:
                until nc -z payments-demo-app 8080; do echo wait processor; sleep 3; done"
       containers:
         - name: app
-          image: gridgain-payments-demo-app:s011
+          image: gridgain-payments-demo-app:s012
           imagePullPolicy: IfNotPresent
           env:
             - { name: SPRING_PROFILES_ACTIVE, value: "payment-initiator" }
@@ -156,7 +156,7 @@ spec:
                until nc -z kafka 9092; do echo wait kafka; sleep 3; done"
       containers:
         - name: app
-          image: gridgain-payments-demo-app:s011
+          image: gridgain-payments-demo-app:s012
           imagePullPolicy: IfNotPresent
           env:
             - { name: SPRING_PROFILES_ACTIVE, value: "reference-cache-sink" }

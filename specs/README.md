@@ -36,6 +36,7 @@ New work not tied to an existing commit. Status: Draft.
 | [009-kubernetes-deployment](009-kubernetes-deployment/) | Draft | Deploy the whole stack on Kubernetes (StatefulSets, Services, ConfigMaps/Secrets, a connector-registration Job) as an alternative to Docker Compose |
 | [010-observability-prometheus-grafana](010-observability-prometheus-grafana/) | Draft | Prometheus + Grafana metrics for MariaDB, GridGain, and Debezium plus the payments-flow stages, with a dedicated dashboard for each |
 | [011-ai-fraud-detection](011-ai-fraud-detection/) | Draft | Real-time AI fraud gate before merchant dispatch, driven by a per-customer context (profile + purchase history) held only in GridGain and updated after each payment |
+| [012-initiator-resilience](012-initiator-resilience/) | Delivered | Guard the payment initiator's ticker so a transient error during a pod roll can't wedge it — the payment flow self-heals instead of needing a manual restart |
 
 ### Not specified
 
