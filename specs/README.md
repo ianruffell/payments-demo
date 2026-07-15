@@ -35,6 +35,7 @@ New work not tied to an existing commit. Status: Draft.
 |------|--------|---------|
 | [009-kubernetes-deployment](009-kubernetes-deployment/) | Draft | Deploy the whole stack on Kubernetes (StatefulSets, Services, ConfigMaps/Secrets, a connector-registration Job) as an alternative to Docker Compose |
 | [010-observability-prometheus-grafana](010-observability-prometheus-grafana/) | Draft | Prometheus + Grafana metrics for MariaDB, GridGain, and Debezium plus the payments-flow stages, with a dedicated dashboard for each |
+| [011-ai-fraud-detection](011-ai-fraud-detection/) | Draft | Real-time AI fraud gate before merchant dispatch, driven by a per-customer context (profile + purchase history) held only in GridGain and updated after each payment |
 
 ### Not specified
 
@@ -59,8 +60,9 @@ terminal payments archived asynchronously and evicted from the cache (005) — w
 **follow-up fix** to the MariaDB defaults (006). **AI Investigation** adds semantic payment
 search over MariaDB vector search (007). Finally the MariaDB backend is hardened into a
 **MaxScale-fronted cluster** (008). Forward-looking specs then propose deploying the same stack on
-**Kubernetes** (009) and adding a **Prometheus + Grafana observability layer** with a dashboard per
-infrastructure tier and for the payments flow (010).
+**Kubernetes** (009), adding a **Prometheus + Grafana observability layer** with a dashboard per
+infrastructure tier and for the payments flow (010), and a **real-time AI fraud gate** that scores
+each payment against a per-customer context held in GridGain before it reaches the merchant (011).
 
 ## Regenerating or extending
 
