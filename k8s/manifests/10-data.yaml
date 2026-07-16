@@ -197,6 +197,8 @@ metadata:
 spec:
   replicas: 1
   selector: { matchLabels: { app: kafka } }
+  # Kafka has a fixed broker ID; use Recreate so the old pod releases /brokers/ids/1 before a replacement starts.
+  strategy: { type: Recreate }
   template:
     metadata:
       labels: { app: kafka }

@@ -9,6 +9,8 @@ metadata:
 spec:
   replicas: 1
   selector: { matchLabels: { app: debezium-connect } }
+  # Keep only one Connect worker during restarts to avoid duplicate memory pressure on local kind.
+  strategy: { type: Recreate }
   template:
     metadata:
       labels: { app: debezium-connect }
@@ -29,6 +31,8 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - { name: KAFKA_OPTS, value: "-javaagent:/agent/jmx.jar=9404:/opt/jmx-cfg/connect-jmx-exporter.yml" }
+            # Leave native/metaspace headroom below the 2Gi container limit while plugin scanning runs.
+            - { name: KAFKA_HEAP_OPTS, value: "-Xms256M -Xmx1G" }
             - { name: BOOTSTRAP_SERVERS, value: "kafka:9092" }
             - { name: GROUP_ID, value: "1" }
             - { name: CONFIG_STORAGE_TOPIC, value: "connect_configs" }
